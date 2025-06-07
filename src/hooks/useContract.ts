@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { formatEther, parseEther, Address } from 'viem';
+import { formatEther, parseEther } from 'viem';
 import { 
   useAccount, 
   usePublicClient, 
@@ -7,10 +7,9 @@ import {
   useSendTransaction, 
   useChainId,
   useSwitchChain,
-  useReadContract,
-  useWriteContract
+  useReadContract
 } from 'wagmi';
-import { celo } from 'viem/chains';
+import { celo, celoAlfajores } from 'viem/chains';
 import { getDataSuffix, submitReferral } from '@divvi/referral-sdk';
 import { Interface } from 'ethers';
 import { quizABI } from '../abi/quizABI';
@@ -19,8 +18,7 @@ import { quizABI } from '../abi/quizABI';
 const QUIZELO_CONTRACT_ADDRESS = import.meta.env.VITE_QUIZELO_CONTRACT_ADDRESS  as `0x${string}`; 
 const env = import.meta.env.VITE_ENV;
 
-//if env is dev , use alfjores instead of celo in clinets
-const chainId = env === 'dev' ? 44787 : 42220;
+//if env is dev , use alfjores instead of celo
 
 // Centralized Divvi configuration
 const DIVVI_CONFIG = {
@@ -63,7 +61,7 @@ interface UserQuizStatus {
 const useDivviTransaction = () => {
   const { sendTransactionAsync } = useSendTransaction();
   const { data: walletClient } = useWalletClient();
-  const publicClient = usePublicClient({ chainId: chainId });
+  const publicClient = usePublicClient({ chainId: env === 'dev' ? celoAlfajores.id : celo.id });
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
 
@@ -91,7 +89,7 @@ const useDivviTransaction = () => {
       }
 
       // Create interface and encode function data
-      const quizeloInterface = new Interface(quizeloABI);
+      const quizeloInterface = new Interface(quizABI);
       const encodedData = quizeloInterface.encodeFunctionData(functionName, args);
 
       // Get Divvi data suffix
@@ -145,7 +143,7 @@ const useDivviTransaction = () => {
 // Main Quizelo hook
 export const useQuizelo = () => {
   const { address } = useAccount();
-  const publicClient = usePublicClient({ chainId: chainId });
+  const publicClient = usePublicClient({ chainId: env === 'dev' ? celoAlfajores.id : celo.id });
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
   const { executeWithDivvi } = useDivviTransaction();
@@ -172,47 +170,48 @@ export const useQuizelo = () => {
   // Contract read hooks
   const { data: userStatsData, refetch: refetchUserStats } = useReadContract({
     address: QUIZELO_CONTRACT_ADDRESS,
-    abi: quizeloABI,
+    abi: quizABI,
     functionName: 'getUserStats',
     args: address ? [address] : undefined,
     query: { enabled: !!address }
   });
+  console.log(userStatsData);
 
   const { data: userQuizStatusData, refetch: refetchUserQuizStatus } = useReadContract({
     address: QUIZELO_CONTRACT_ADDRESS,
-    abi: quizeloABI,
+    abi: quizABI,
     functionName: 'canUserTakeQuiz',
     args: address ? [address] : undefined,
     query: { enabled: !!address }
   });
-
+  console.log(userQuizStatusData);
   const { data: minimumBalance } = useReadContract({
     address: QUIZELO_CONTRACT_ADDRESS,
-    abi: quizeloABI,
+    abi: quizABI,
     functionName: 'MIN_CONTRACT_BALANCE'
   });
 
   const { data: rewardAmount } = useReadContract({
     address: QUIZELO_CONTRACT_ADDRESS,
-    abi: quizeloABI,
+    abi: quizABI,
     functionName: 'REWARD_AMOUNT'
   });
 
   const { data: cooldownPeriod } = useReadContract({
     address: QUIZELO_CONTRACT_ADDRESS,
-    abi: quizeloABI,
+    abi: quizABI,
     functionName: 'COOLDOWN_PERIOD'
   });
 
   const { data: maxDailyQuizzes } = useReadContract({
     address: QUIZELO_CONTRACT_ADDRESS,
-    abi: quizeloABI,
+    abi: quizABI,
     functionName: 'MAX_DAILY_QUIZZES'
   });
 
   const { data: isPaused } = useReadContract({
     address: QUIZELO_CONTRACT_ADDRESS,
-    abi: quizeloABI,
+    abi: quizABI,
     functionName: 'paused'
   });
 
@@ -240,7 +239,7 @@ export const useQuizelo = () => {
     try {
       const stats = await publicClient.readContract({
         address: QUIZELO_CONTRACT_ADDRESS,
-        abi: quizeloABI,
+        abi: quizABI,
         functionName: 'getUserStats',
         args: [address]
       }) as [bigint, bigint, bigint, bigint];
@@ -263,7 +262,7 @@ export const useQuizelo = () => {
     try {
       const [dailyCount, lastQuizTime, cooldownEnd, wonToday, canTake] = await publicClient.readContract({
         address: QUIZELO_CONTRACT_ADDRESS,
-        abi: quizeloABI,
+        abi: quizABI,
         functionName: 'canUserTakeQuiz',
         args: [address]
       }) as [bigint, bigint, bigint, bigint, boolean];
@@ -287,7 +286,7 @@ export const useQuizelo = () => {
     try {
       const history = await publicClient.readContract({
         address: QUIZELO_CONTRACT_ADDRESS,
-        abi: quizeloABI,
+        abi: quizABI,
         functionName: 'getQuizHistory',
         args: [address, BigInt(offset), BigInt(limit)]
       }) as Array<[bigint, boolean, bigint]>;
@@ -311,7 +310,7 @@ export const useQuizelo = () => {
     try {
       const [users, scores] = await publicClient.readContract({
         address: QUIZELO_CONTRACT_ADDRESS,
-        abi: quizeloABI,
+        abi: quizABI,
         functionName: 'getLeaderboard',
         args: [BigInt(limit)]
       }) as [string[], bigint[]];
@@ -733,11 +732,11 @@ export const useQuizelo = () => {
   // Update contract config when data changes
   useEffect(() => {
     setContractConfig({
-      minimumBalance: minimumBalance || 0n,
-      rewardAmount: rewardAmount || 0n,
-      cooldownPeriod: Number(cooldownPeriod || 0n),
-      maxDailyQuizzes: Number(maxDailyQuizzes || 0n),
-      isPaused: isPaused || false
+      minimumBalance: minimumBalance as bigint || 0n,
+      rewardAmount: rewardAmount as bigint || 0n,
+      cooldownPeriod: Number(cooldownPeriod as bigint || 0n),
+      maxDailyQuizzes: Number(maxDailyQuizzes as bigint || 0n),
+      isPaused: isPaused as boolean || false
     });
   }, [minimumBalance, rewardAmount, cooldownPeriod, maxDailyQuizzes, isPaused]);
 

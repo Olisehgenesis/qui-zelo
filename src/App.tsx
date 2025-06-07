@@ -5,8 +5,6 @@ import { useQuizelo } from './hooks/useQuizelo';
 import { useTopics, TopicWithMetadata } from './hooks/useTopics';
 import Header from './components/Header';
 import { sdk } from '@farcaster/frame-sdk';
-import { formatEther } from 'viem';
-
 interface QuizResult {
   isCorrect: boolean;
   correctAnswer: number;
@@ -30,7 +28,6 @@ const QuizeloApp = () => {
   
   // Contract integration
   const {
-    address,
     isLoading: contractLoading,
     error: contractError,
     success: contractSuccess,
@@ -186,21 +183,7 @@ const QuizeloApp = () => {
   const countdownPercentage = (timeLeft / initialTime) * 100;
   const isTimeRunningOut = timeLeft <= 5;
 
-  // Calculate potential earnings
-  const calculateEarnings = () => {
-    if (!userInfo) return '0.0';
-    
-    const score = calculateScore(userAnswers);
-    if (score.percentage < 60) return '0.0'; // Money lost
-    
-    // This is simplified - in reality it depends on hasWonToday and random factors
-    if (userInfo.wonToday) {
-      return '0.7'; // Max for subsequent wins
-    } else {
-      // First win: 0.6-1.0 CELO (we'll show average)
-      return '0.8';
-    }
-  };
+  
 
   // Render wallet connection prompt
   if (!isConnected) {
@@ -335,7 +318,7 @@ const QuizeloApp = () => {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Entry Fee:</span>
-                    <span className="font-bold text-red-600">{quizFee ? formatEther(BigInt(quizFee)) : '0.5'} CELO</span>
+                    <span className="font-bold text-red-600">{quizFee ? formatEther(quizFee as bigint) : '0.5'} CELO</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Quiz Duration:</span>
@@ -408,7 +391,7 @@ const QuizeloApp = () => {
               </div>
 
               <div className="mt-8 text-xs text-gray-500">
-                Powered by OpenAI & Celo • Min balance: {minContractBalance ? formatEther(BigInt(minContractBalance)) : '5'} CELO
+                Powered by OpenAI & Celo • Min balance: {minContractBalance ? formatEther(minContractBalance as bigint) : '5'} CELO
               </div>
             </div>
           </div>
@@ -653,10 +636,10 @@ const QuizeloApp = () => {
                       💰 Potential Earnings
                     </div>
                     <div className="text-2xl font-bold text-green-600">
-                      {formatEther(contractConfig.rewardAmount * BigInt(calculateScore(userAnswers).correct))} CELO
+                      {formatEther((quizFee as bigint) * BigInt(calculateScore(userAnswers).correct))} CELO
                     </div>
                     <div className="text-sm text-gray-600">
-                      {calculateScore(userAnswers).correct} correct × {formatEther(contractConfig.rewardAmount)} CELO each
+                      {calculateScore(userAnswers).correct} correct × {formatEther(quizFee as bigint)} CELO each
                     </div>
                   </div>
                 </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { formatEther, parseEther, Address, http } from 'viem';
+import { formatEther, parseEther } from 'viem';
 import { 
   useAccount, 
   usePublicClient, 
@@ -8,7 +8,7 @@ import {
   useChainId,
   useSwitchChain,
   useReadContract,
-  useWriteContract
+
 } from 'wagmi';
 import { celo, celoAlfajores } from 'viem/chains';
 import { getDataSuffix, submitReferral } from '@divvi/referral-sdk';
@@ -97,7 +97,7 @@ const useDivviTransaction = () => {
       const dataSuffix = getDataSuffix(DIVVI_CONFIG);
       const finalData = encodedData + dataSuffix;
 
-      // Send transaction with Divvi integration
+      // Send transaction with Dvvi integration
       const txHash = await sendTransactionAsync({
         to: QUIZELO_CONTRACT_ADDRESS,
         data: finalData as `0x${string}`,
@@ -159,6 +159,7 @@ export const useQuizelo = () => {
   const [contractStats, setContractStats] = useState<ContractStats | null>(null);
   const [activeQuizTakers, setActiveQuizTakers] = useState<string[]>([]);
   const [currentQuizSession, setCurrentQuizSession] = useState<QuizSession | null>(null);
+  console.log(setCurrentQuizSession)
 
   // Contract read hooks for constants
   const { data: quizFee } = useReadContract({
@@ -261,7 +262,7 @@ export const useQuizelo = () => {
       await executeWithDivvi({
         functionName: 'startQuiz',
         args: [],
-        value: quizFee,
+        value: quizFee as bigint,
         onSuccess: (txHash) => {
           setTxHash(txHash);
           showSuccess('🎯 Quiz started successfully!');
