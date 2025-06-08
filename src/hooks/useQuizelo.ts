@@ -263,16 +263,57 @@ export const useQuizelo = () => {
         functionName: 'startQuiz',
         args: [],
         value: quizFee as bigint,
-        onSuccess: (txHash) => {
+        onSuccess: async (txHash) => {
           setTxHash(txHash);
           showSuccess('🎯 Quiz started successfully!');
+          
+          // Wait for transaction receipt and extract sessionId from event
+          if (publicClient) {
+            try {
+              const receipt = await publicClient.waitForTransactionReceipt({ 
+                hash: txHash as `0x${string}` 
+              });
+              
+              console.log('📝 Transaction receipt:', receipt);
+              
+              // Find QuizStarted event in logs
+              const quizStartedEvent = receipt.logs.find(log => 
+                log.topics[0] === '0x' + quizABI.find(item => 
+                  item.type === 'event' && item.name === 'QuizStarted'
+                )?.inputs?.map(input => input.type).join(',')
+              );
+
+              if (quizStartedEvent) {
+                console.log('📝 Found QuizStarted event:', quizStartedEvent);
+                // The sessionId is in the first topic (indexed parameter)
+                sessionId = quizStartedEvent.topics[1] as `0x${string}`;
+                console.log('📝 Extracted sessionId from event topic:', sessionId);
+              } else {
+                console.warn('⚠️ QuizStarted event not found in logs');
+              }
+
+              if (sessionId) {
+                // Validate the session
+                const session = await publicClient.readContract({
+                  address: QUIZELO_CONTRACT_ADDRESS,
+                  abi: quizABI,
+                  functionName: 'getQuizSession',
+                  args: [sessionId]
+                });
+                console.log('📝 Session details:', session);
+                
+             
+              }
+            } catch (error) {
+              console.error('❌ Error extracting sessionId:', error);
+            }
+          }
+
           // Refresh data
           refetchUserInfo();
           refetchContractStats();
           refetchActiveQuizTakers();
           success = true;
-          // Generate a temporary session ID based on the transaction hash
-          sessionId = txHash;
         },
         onError: (error) => {
           showError('Failed to start quiz: ' + error.message);
@@ -292,6 +333,11 @@ export const useQuizelo = () => {
       return;
     }
 
+    if (!sessionId) {
+      showError('Invalid session ID');
+      return;
+    }
+
     if (currentChainId !== targetChainId) {
       try {
         await switchChain({ chainId: targetChainId });
@@ -306,6 +352,53 @@ export const useQuizelo = () => {
     resetMessages();
 
     try {
+      // Validate session before claiming
+      if (publicClient) {
+        try {
+          const session = await publicClient.readContract({
+            address: QUIZELO_CONTRACT_ADDRESS,
+            abi: quizABI,
+            functionName: 'getQuizSession',
+            args: [sessionId]
+          });
+
+          console.log('📝 Validating session before claim:', {
+            sessionId,
+            user: (session as any)[0],
+            startTime: (session as any)[1],
+            expiryTime: (session as any)[2],
+            active: (session as any)[3],
+            claimed: (session as any)[4],
+            timeRemaining: (session as any)[5]
+          });
+
+          if (!(session as any)[3]) { // active
+            showError('This quiz session is no longer active');
+            return;
+          }
+
+          if ((session as any)[4]) { // claimed
+            showError('This quiz has already been claimed');
+            return;
+          }
+
+          if ((session as any)[0].toLowerCase() !== address.toLowerCase()) {
+            showError('This quiz session belongs to a different user');
+            return;
+          }
+
+          const now = Math.floor(Date.now() / 1000);
+          if (Number((session as any)[2]) < now) { // expiryTime
+            showError('This quiz session has expired');
+            return;
+          }
+        } catch (error) {
+          console.error('❌ Error validating session:', error);
+          showError('Failed to validate quiz session');
+          return;
+        }
+      }
+
       await executeWithDivvi({
         functionName: 'claimReward',
         args: [sessionId, score],

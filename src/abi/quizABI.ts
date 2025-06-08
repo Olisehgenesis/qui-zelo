@@ -1,4 +1,4 @@
-export const quizABI = [
+export const quizABI =[
   {
     "type": "constructor",
     "inputs": [],
