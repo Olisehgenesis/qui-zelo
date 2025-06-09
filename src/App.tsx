@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { celo } from 'viem/chains';
 import { useSwitchChain, useChainId } from 'wagmi';
+import { sdk } from '@farcaster/frame-sdk';
 
 // Import your hooks
 import { useQuizelo } from './hooks/useQuizelo';
@@ -1053,6 +1054,29 @@ const QuizeloApp = () => {
       )}
     </div>
   );
+  
+  // Call ready when the app is mounted and initial data is loaded
+  useEffect(() => {
+    const initializeApp = async () => {
+      try {
+        // Wait for initial data to load
+        await Promise.all([
+          quizelo.refetchUserInfo(),
+          quizelo.refetchContractStats(),
+          quizelo.refetchActiveQuizTakers()
+        ]);
+        
+        // Call ready to dismiss splash screen
+        await sdk.actions.ready();
+      } catch (error) {
+        console.error('Error initializing app:', error);
+        // Still call ready even if there's an error to avoid blank screen
+        await sdk.actions.ready();
+      }
+    };
+
+    initializeApp();
+  }, []);
   
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-100 via-pink-100 to-blue-100">
