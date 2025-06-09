@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { formatEther, parseEther } from 'viem';
+import { encodeFunctionData, formatEther, parseEther } from 'viem';
 import { 
   useAccount, 
   usePublicClient, 
@@ -8,11 +8,8 @@ import {
   useChainId,
   useSwitchChain,
   useReadContract,
-
 } from 'wagmi';
 import { celo, celoAlfajores } from 'viem/chains';
-import { getDataSuffix, submitReferral } from '@divvi/referral-sdk';
-import { Interface } from 'ethers';
 import { quizABI } from '../abi/quizABI';
 
 const QUIZELO_CONTRACT_ADDRESS = import.meta.env.VITE_QUIZELO_CONTRACT_ADDRESS as `0x${string}`;
@@ -20,16 +17,6 @@ const env = import.meta.env.VITE_ENV;
 
 // If env is dev, use alfajores instead of celo in clients
 const targetChainId = env === 'dev' ? 44787 : 42220;
-
-// Centralized Divvi configuration
-const DIVVI_CONFIG = {
-  consumer: '0x53eaF4CD171842d8144e45211308e5D90B4b0088' as `0x${string}`,
-  providers: [
-    '0x0423189886d7966f0dd7e7d256898daeee625dca',
-    '0xc95876688026be9d6fa7a7c33328bd013effa2bb', 
-    '0x5f0a55fad9424ac99429f635dfb9bf20c3360ab8'
-  ] as `0x${string}`[]
-};
 
 // Types matching the actual contract
 interface UserInfo {
@@ -56,8 +43,8 @@ interface ContractStats {
   operational: boolean;
 }
 
-// Custom hook for Divvi-enabled transactions
-const useDivviTransaction = () => {
+// Custom hook for contract transactions
+const useContractTransaction = () => {
   const { sendTransactionAsync } = useSendTransaction();
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient({ 
@@ -66,7 +53,7 @@ const useDivviTransaction = () => {
   const currentChainId = useChainId();
   const { switchChain } = useSwitchChain();
 
-  const executeWithDivvi = useCallback(async ({
+  const executeTransaction = useCallback(async ({
     functionName,
     args = [],
     value,
@@ -76,7 +63,7 @@ const useDivviTransaction = () => {
     functionName: string;
     args?: any[];
     value?: bigint;
-    onSuccess?: (txHash: string) => void;
+    onSuccess?: (txHash: string, receipt?: any) => void;
     onError?: (error: Error) => void;
   }) => {
     try {
@@ -89,18 +76,14 @@ const useDivviTransaction = () => {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
-      // Create interface and encode function data
-      const quizeloInterface = new Interface(quizABI);
-      const encodedData = quizeloInterface.encodeFunctionData(functionName, args);
-
-      // Get Divvi data suffix
-      const dataSuffix = getDataSuffix(DIVVI_CONFIG);
-      const finalData = encodedData + dataSuffix;
-
-      // Send transaction with Dvvi integration
+      // Send transaction
       const txHash = await sendTransactionAsync({
         to: QUIZELO_CONTRACT_ADDRESS,
-        data: finalData as `0x${string}`,
+        data: encodeFunctionData({
+          abi: quizABI,
+          functionName,
+          args,
+        }),
         value,
       });
 
@@ -111,34 +94,22 @@ const useDivviTransaction = () => {
         const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
         
         if (receipt.status === 'success') {
-          // Submit to Divvi
-          try {
-            const chainId = await walletClient.getChainId();
-            await submitReferral({
-              txHash: txHash as `0x${string}`,
-              chainId
-            });
-            console.log('✅ Divvi referral submitted successfully');
-          } catch (referralError) {
-            console.error('Referral submission error:', referralError);
-          }
-
-          onSuccess?.(txHash);
-          return txHash;
+          onSuccess?.(txHash, receipt);
+          return { success: true, txHash, receipt };
         } else {
           throw new Error('Transaction failed');
         }
       }
 
-      return txHash;
+      return { success: true, txHash, receipt: null };
     } catch (error) {
       console.error(`Error in ${functionName}:`, error);
       onError?.(error as Error);
-      throw error;
+      return { success: false, error: error as Error };
     }
   }, [sendTransactionAsync, walletClient, publicClient, currentChainId, switchChain]);
 
-  return { executeWithDivvi };
+  return { executeTransaction };
 };
 
 export const useQuizelo = () => {
@@ -146,7 +117,7 @@ export const useQuizelo = () => {
   const publicClient = usePublicClient({ chainId: env === 'dev' ? celoAlfajores.id : celo.id });
   const currentChainId = useChainId();
   const { switchChain } = useSwitchChain();
-  const { executeWithDivvi } = useDivviTransaction();
+  const { executeTransaction } = useContractTransaction();
 
   // State management
   const [isLoading, setIsLoading] = useState(false);
@@ -159,7 +130,6 @@ export const useQuizelo = () => {
   const [contractStats, setContractStats] = useState<ContractStats | null>(null);
   const [activeQuizTakers, setActiveQuizTakers] = useState<string[]>([]);
   const [currentQuizSession, setCurrentQuizSession] = useState<QuizSession | null>(null);
-  console.log(setCurrentQuizSession)
 
   // Contract read hooks for constants
   const { data: quizFee } = useReadContract({
@@ -230,6 +200,34 @@ export const useQuizelo = () => {
     setTimeout(() => setError(''), 5000);
   }, []);
 
+  // Extract sessionId from transaction receipt
+  const extractSessionIdFromReceipt = (receipt: any): string | null => {
+    try {
+      if (!receipt?.logs) return null;
+
+      // Find QuizStarted event
+      for (const log of receipt.logs) {
+        if (log.topics && log.topics.length >= 2) {
+          // Check if this is from our contract
+          if (log.address.toLowerCase() === QUIZELO_CONTRACT_ADDRESS.toLowerCase()) {
+            // The sessionId is typically in the first indexed parameter (topics[1])
+            const sessionId = log.topics[1];
+            if (sessionId && sessionId !== '0x0000000000000000000000000000000000000000000000000000000000000000') {
+              console.log('✅ Extracted sessionId from receipt:', sessionId);
+              return sessionId;
+            }
+          }
+        }
+      }
+
+      console.warn('⚠️ No valid sessionId found in transaction receipt');
+      return null;
+    } catch (error) {
+      console.error('❌ Error extracting sessionId:', error);
+      return null;
+    }
+  };
+
   // Main contract interaction functions
   const startQuiz = async () => {
     if (!address) {
@@ -257,71 +255,29 @@ export const useQuizelo = () => {
 
     try {
       let sessionId: string | null = null;
-      let success = false;
 
-      await executeWithDivvi({
+      const result = await executeTransaction({
         functionName: 'startQuiz',
         args: [],
         value: quizFee as bigint,
-        onSuccess: async (txHash) => {
+        onSuccess: (txHash, receipt) => {
           setTxHash(txHash);
           showSuccess('🎯 Quiz started successfully!');
           
-          // Wait for transaction receipt and extract sessionId from event
-          if (publicClient) {
-            try {
-              const receipt = await publicClient.waitForTransactionReceipt({ 
-                hash: txHash as `0x${string}` 
-              });
-              
-              console.log('📝 Transaction receipt:', receipt);
-              
-              // Find QuizStarted event in logs
-              const quizStartedEvent = receipt.logs.find(log => 
-                log.topics[0] === '0x' + quizABI.find(item => 
-                  item.type === 'event' && item.name === 'QuizStarted'
-                )?.inputs?.map(input => input.type).join(',')
-              );
-
-              if (quizStartedEvent) {
-                console.log('📝 Found QuizStarted event:', quizStartedEvent);
-                // The sessionId is in the first topic (indexed parameter)
-                sessionId = quizStartedEvent.topics[1] as `0x${string}`;
-                console.log('📝 Extracted sessionId from event topic:', sessionId);
-              } else {
-                console.warn('⚠️ QuizStarted event not found in logs');
-              }
-
-              if (sessionId) {
-                // Validate the session
-                const session = await publicClient.readContract({
-                  address: QUIZELO_CONTRACT_ADDRESS,
-                  abi: quizABI,
-                  functionName: 'getQuizSession',
-                  args: [sessionId]
-                });
-                console.log('📝 Session details:', session);
-                
-             
-              }
-            } catch (error) {
-              console.error('❌ Error extracting sessionId:', error);
-            }
-          }
-
+          // Extract sessionId from receipt
+          sessionId = extractSessionIdFromReceipt(receipt);
+          
           // Refresh data
           refetchUserInfo();
           refetchContractStats();
           refetchActiveQuizTakers();
-          success = true;
         },
         onError: (error) => {
           showError('Failed to start quiz: ' + error.message);
-          success = false;
         }
       });
 
-      return { success, sessionId };
+      return { success: result.success, sessionId };
     } finally {
       setIsLoading(false);
     }
@@ -399,7 +355,7 @@ export const useQuizelo = () => {
         }
       }
 
-      await executeWithDivvi({
+      await executeTransaction({
         functionName: 'claimReward',
         args: [sessionId, score],
         onSuccess: (txHash) => {
@@ -429,7 +385,7 @@ export const useQuizelo = () => {
     resetMessages();
 
     try {
-      await executeWithDivvi({
+      await executeTransaction({
         functionName: 'cleanupExpiredQuiz',
         args: [sessionId],
         onSuccess: (txHash) => {
@@ -457,7 +413,7 @@ export const useQuizelo = () => {
     resetMessages();
 
     try {
-      await executeWithDivvi({
+      await executeTransaction({
         functionName: 'topUpContract',
         args: [],
         value: amount,
@@ -485,7 +441,7 @@ export const useQuizelo = () => {
     resetMessages();
 
     try {
-      await executeWithDivvi({
+      await executeTransaction({
         functionName: 'adminEmergencyDrain',
         args: [],
         onSuccess: (txHash) => {
@@ -512,7 +468,7 @@ export const useQuizelo = () => {
     resetMessages();
 
     try {
-      await executeWithDivvi({
+      await executeTransaction({
         functionName: 'adminCleanupExpired',
         args: [],
         onSuccess: (txHash) => {
