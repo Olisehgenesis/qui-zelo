@@ -825,12 +825,30 @@ const QuizeloApp = () => {
           
           {quizelo.isConnected && (
             <div className="bg-white/20 rounded-2xl p-4 backdrop-blur-sm border border-white/30 shadow-lg">
-              <div className="flex items-center space-x-3">
-                <Wallet className="w-5 h-5 text-purple-100" />
-                <div>
-                  <p className="text-purple-100 text-sm font-bold">🎯 Player Connected</p>
-                  <p className="font-mono text-white text-sm">{formatAddress(quizelo.address)}</p>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <Wallet className="w-5 h-5 text-purple-100" />
+                  <div>
+                    <p className="text-purple-100 text-sm font-bold">🎯 Player Connected</p>
+                    <p className="font-mono text-white text-sm">{formatAddress(quizelo.address)}</p>
+                  </div>
                 </div>
+                <button
+                  onClick={switchToCelo}
+                  disabled={isSwitchingNetwork}
+                  className="flex items-center space-x-2 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSwitchingNetwork ? (
+                    <LoadingSpinner size={5} color="text-white" />
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4 text-white" />
+                      <span className="text-white text-sm font-medium">
+                        {chainId === celo.id ? '✅ Celo' : '🔄 Switch to Celo'}
+                      </span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           )}
