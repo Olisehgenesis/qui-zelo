@@ -16,7 +16,6 @@ import {
   Loader2,
   Sparkles,
   Brain,
-  Timer,
   RefreshCw,
   Star,
   Target,
@@ -45,6 +44,142 @@ const LoadingSpinner = ({ size = 6, color = 'text-white' }) => (
     </div>
   </div>
 );
+
+// Horizontal Timer Component
+const HorizontalTimer = ({ timeLeft, totalTime = 15, onTimeUp }: { timeLeft: number, totalTime?: number, onTimeUp: () => void }) => {
+  const progress = (timeLeft / totalTime) * 100;
+  console.log("timeLeft", onTimeUp);
+  
+  const getTimerColor = () => {
+    if (timeLeft <= 3) return 'from-red-500 to-red-600';
+    if (timeLeft <= 7) return 'from-orange-400 to-red-400';
+    return 'from-green-400 to-blue-500';
+  };
+
+  return (
+    <div className="w-full mb-6">
+      {/* Timer display */}
+      <div className="flex justify-between items-center mb-2">
+        <span className="text-sm font-semibold text-slate-600">⏱️ Time Left</span>
+        <span className={`font-bold text-lg ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : 'text-slate-700'}`}>
+          {timeLeft}s
+        </span>
+      </div>
+      
+      {/* Progress bar container */}
+      <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden shadow-inner">
+        <div 
+          className={`h-full bg-gradient-to-r ${getTimerColor()} transition-all duration-1000 ease-linear rounded-full shadow-lg relative overflow-hidden`}
+          style={{ width: `${progress}%` }}
+        >
+          {/* Animated shine effect */}
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-20 animate-pulse"></div>
+          
+          {/* Pulsing effect when time is low */}
+          {timeLeft <= 5 && (
+            <div className="absolute inset-0 bg-red-400 animate-ping opacity-75"></div>
+          )}
+        </div>
+      </div>
+      
+      {/* Warning text for low time */}
+      {timeLeft <= 5 && (
+        <div className="text-center mt-2">
+          <span className="text-red-500 font-bold text-sm animate-bounce">
+            ⚠️ Time running out!
+          </span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Question Result Component
+const QuestionResult = ({ result, correctAnswer, userAnswer, onContinue, isLastQuestion }: { 
+  result: any, 
+  correctAnswer: string, 
+  userAnswer: string, 
+  onContinue: () => void,
+  isLastQuestion: boolean 
+}) => {
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
+      <div className={`bg-white rounded-3xl p-6 sm:p-8 w-full max-w-md mx-4 shadow-2xl border-2 ${
+        result.isCorrect ? 'border-green-300' : 'border-red-300'
+      } relative overflow-hidden animate-slideUp`}>
+        
+        {/* Animated background */}
+        <div className={`absolute inset-0 ${
+          result.isCorrect 
+            ? 'bg-gradient-to-br from-green-50/80 via-emerald-50/80 to-teal-50/80' 
+            : 'bg-gradient-to-br from-red-50/80 via-pink-50/80 to-orange-50/80'
+        }`}></div>
+        
+        {/* Celebration particles for correct answers */}
+        {result.isCorrect && (
+          <>
+            <div className="absolute -top-2 -right-2 w-4 h-4 bg-yellow-300 rounded-full animate-bounce delay-75"></div>
+            <div className="absolute top-4 -left-2 w-3 h-3 bg-green-300 rounded-full animate-bounce delay-150"></div>
+            <div className="absolute -bottom-2 right-4 w-3 h-3 bg-blue-300 rounded-full animate-bounce"></div>
+          </>
+        )}
+        
+        <div className="relative text-center">
+          {/* Result icon */}
+          <div className={`w-20 h-20 mx-auto mb-6 rounded-full flex items-center justify-center shadow-2xl ${
+            result.isCorrect 
+              ? 'bg-gradient-to-br from-green-400 via-emerald-500 to-teal-500 animate-bounce' 
+              : 'bg-gradient-to-br from-red-400 via-pink-500 to-orange-500 animate-pulse'
+          }`}>
+            {result.isCorrect ? (
+              <CheckCircle className="w-10 h-10 text-white" />
+            ) : (
+              <X className="w-10 h-10 text-white" />
+            )}
+          </div>
+          
+          {/* Result title */}
+          <h3 className={`text-2xl font-bold mb-4 ${
+            result.isCorrect ? 'text-green-600' : 'text-red-600'
+          }`}>
+            {result.isCorrect ? '🎉 Correct!' : '💡 Not quite!'}
+          </h3>
+          
+          {/* Answer feedback */}
+          <div className={`p-4 rounded-2xl mb-6 border-2 ${
+            result.isCorrect 
+              ? 'bg-green-50 border-green-200' 
+              : 'bg-red-50 border-red-200'
+          }`}>
+            {!result.isCorrect && (
+              <p className="text-sm text-slate-600 mb-2">
+                <span className="font-semibold">Your answer:</span> {userAnswer}
+              </p>
+            )}
+            <p className="text-sm text-slate-600 mb-3">
+              <span className="font-semibold">Correct answer:</span> {correctAnswer}
+            </p>
+            <p className="text-sm text-slate-700 leading-relaxed">
+              {result.explanation}
+            </p>
+          </div>
+          
+          {/* Continue button */}
+          <button
+            onClick={onContinue}
+            className={`w-full py-4 rounded-2xl font-bold text-white text-lg transition-all transform hover:scale-105 shadow-lg ${
+              result.isCorrect
+                ? 'bg-gradient-to-r from-green-400 via-emerald-500 to-teal-500 hover:shadow-green-200'
+                : 'bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 hover:shadow-purple-200'
+            }`}
+          >
+            {isLastQuestion ? '🏁 View Results' : '➡️ Continue Quest'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // Enhanced Quiz Generation Modal with game-like animations
 const QuizGenerationModal = ({ isVisible , topic, onClose }: { isVisible: boolean, topic: any, onClose: () => void }) => {
@@ -283,6 +418,9 @@ const QuizeloApp = () => {
   const [showNetworkModal, setShowNetworkModal] = useState(false);
   const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
   const [networkError, setNetworkError] = useState('');
+  const [showQuestionResult, setShowQuestionResult] = useState(false);
+  const [currentQuestionResult, setCurrentQuestionResult] = useState<any>(null);
+  const [isAnswered, setIsAnswered] = useState(false);
 
   // Your hooks
   const quizelo = useQuizelo();
@@ -294,11 +432,11 @@ const QuizeloApp = () => {
   // Timer effect for quiz questions
   useEffect(() => {
     let timer: NodeJS.Timeout;
-    if (isInQuiz && !showResults && timeLeft > 0) {
+    if (isInQuiz && !showResults && !showQuestionResult && !isAnswered && timeLeft > 0) {
       timer = setInterval(() => {
         setTimeLeft(prev => {
           if (prev <= 1) {
-            handleAnswer(-1);
+            handleAnswer(-1); // Auto-submit with no answer
             return 15;
           }
           return prev - 1;
@@ -306,7 +444,7 @@ const QuizeloApp = () => {
       }, 1000);
     }
     return () => clearInterval(timer);
-  }, [isInQuiz, showResults, timeLeft, currentQuestionIndex]);
+  }, [isInQuiz, showResults, showQuestionResult, isAnswered, timeLeft, currentQuestionIndex]);
 
   // Check wallet connection on mount
   useEffect(() => {
@@ -409,18 +547,43 @@ const QuizeloApp = () => {
   };
 
   const handleAnswer = (answerIndex: number) => {
+    if (isAnswered) return; // Prevent multiple answers
+    
+    setIsAnswered(true);
     const newAnswers = [...userAnswers, answerIndex];
     setUserAnswers(newAnswers);
+    
+    // Get result for this question
+    const result = markAnswer(currentQuestionIndex, answerIndex);
+    const correctAnswer = questions[currentQuestionIndex].options[questions[currentQuestionIndex].correctAnswer];
+    const userAnswer = answerIndex >= 0 ? questions[currentQuestionIndex].options[answerIndex] : 'No answer';
+    
+    setCurrentQuestionResult({
+      ...result,
+      correctAnswer,
+      userAnswer,
+      isLastQuestion: currentQuestionIndex === questions.length - 1
+    });
+    
+    setShowQuestionResult(true);
+  };
+
+  const handleContinueToNext = () => {
+    setShowQuestionResult(false);
+    setIsAnswered(false);
     
     if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
       setTimeLeft(15);
     } else {
-      const score = calculateScore(newAnswers);
+      // Calculate final score and show results
+      const score = calculateScore(userAnswers);
       setFinalScore(score);
       setIsInQuiz(false);
       setShowResults(true);
     }
+    
+    setCurrentQuestionResult(null);
   };
 
   const handleClaimReward = async () => {
@@ -573,15 +736,6 @@ const QuizeloApp = () => {
     if (!questions[currentQuestionIndex]) return null;
 
     const question = questions[currentQuestionIndex];
-    const result = userAnswers[currentQuestionIndex] !== undefined 
-      ? markAnswer(currentQuestionIndex, userAnswers[currentQuestionIndex])
-      : null;
-
-    const getTimerColor = () => {
-      if (timeLeft <= 3) return 'from-red-400 to-red-600';
-      if (timeLeft <= 7) return 'from-orange-400 to-red-400';
-      return 'from-green-400 to-blue-400';
-    };
 
     return (
       <div className="fixed inset-0 bg-gradient-to-br from-blue-100 via-purple-100 to-pink-100 overflow-y-auto">
@@ -600,13 +754,14 @@ const QuizeloApp = () => {
                   </p>
                 </div>
               </div>
-              <div className={`flex items-center space-x-2 px-3 py-2 rounded-xl bg-gradient-to-r ${getTimerColor()} shadow-lg`}>
-                <Timer className="w-4 h-4 text-white" />
-                <span className="text-white font-bold text-sm sm:text-base">
-                  {timeLeft}s
-                </span>
-              </div>
             </div>
+
+            {/* Horizontal Timer */}
+            <HorizontalTimer 
+              timeLeft={timeLeft} 
+              totalTime={15} 
+              onTimeUp={() => handleAnswer(-1)} 
+            />
 
             {/* Progress with XP bar style */}
             <div className="mb-6">
@@ -644,9 +799,9 @@ const QuizeloApp = () => {
                     <button
                       key={index}
                       onClick={() => handleAnswer(index)}
-                      disabled={result !== null}
+                      disabled={isAnswered}
                       className={`w-full p-4 sm:p-5 text-left rounded-2xl border-2 transition-all duration-300 group relative overflow-hidden shadow-lg ${
-                        result !== null
+                        isAnswered
                           ? index === question.correctAnswer
                             ? 'border-green-400 bg-gradient-to-r from-green-100 to-emerald-100 shadow-green-200'
                             : index === userAnswers[currentQuestionIndex]
@@ -658,7 +813,7 @@ const QuizeloApp = () => {
                       <div className="absolute inset-0 bg-gradient-to-r from-purple-400/5 via-pink-400/5 to-blue-400/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                       <div className="relative flex items-center space-x-4">
                         <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold shadow-lg ${
-                          result !== null
+                          isAnswered
                             ? index === question.correctAnswer
                               ? 'border-green-400 bg-green-400 text-white'
                               : index === userAnswers[currentQuestionIndex]
@@ -679,29 +834,19 @@ const QuizeloApp = () => {
                 </div>
               </div>
             </div>
-
-            {/* Enhanced Explanation */}
-            {result && (
-              <div className={`${result.isCorrect ? 'bg-gradient-to-r from-green-100 to-emerald-100 border-green-300' : 'bg-gradient-to-r from-red-100 to-pink-100 border-red-300'} border-2 rounded-2xl p-6 shadow-xl`}>
-                <div className="flex items-start space-x-4">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${result.isCorrect ? 'bg-green-400' : 'bg-red-400'} shadow-lg`}>
-                    {result.isCorrect ? (
-                      <CheckCircle className="w-5 h-5 text-white" />
-                    ) : (
-                      <X className="w-5 h-5 text-white" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <p className={`font-bold mb-2 text-lg ${result.isCorrect ? 'text-green-800' : 'text-red-800'}`}>
-                      {result.isCorrect ? '🎉 Correct!' : '💡 Not quite!'}
-                    </p>
-                    <p className="text-slate-700 text-sm sm:text-base leading-relaxed">{result.explanation}</p>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
+
+        {/* Question Result Modal */}
+        {showQuestionResult && currentQuestionResult && (
+          <QuestionResult
+            result={currentQuestionResult}
+            correctAnswer={currentQuestionResult.correctAnswer}
+            userAnswer={currentQuestionResult.userAnswer}
+            onContinue={handleContinueToNext}
+            isLastQuestion={currentQuestionResult.isLastQuestion}
+          />
+        )}
       </div>
     );
   };

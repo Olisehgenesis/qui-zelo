@@ -1,4 +1,5 @@
 @import "tailwindcss";
+
 :root {
   background-color: #181818;
   color: rgba(255, 255, 255, 0.87);
@@ -50,4 +51,28 @@ body {
     background-color: #f8f8f8;
     color: #181818;
   }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { 
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slideUp {
+  animation: slideUp 0.4s ease-out;
 }
