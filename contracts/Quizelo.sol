@@ -14,12 +14,12 @@ contract Quizelo is Ownable, ReentrancyGuard {
     constructor() Ownable(msg.sender) {}
 
     // ==================== CONSTANTS ====================
-    
-    uint256 public constant QUIZ_FEE = 0.5 ether; // 0.5 CELO
+
+    uint256 public constant QUIZ_FEE = 0.1 ether; // 0.1 CELO
     uint256 public constant QUIZ_DURATION = 10 minutes; // 5 minutes to claim
     uint256 public constant COOLDOWN_PERIOD = 20 minutes; // 20 minutes between quizzes
     uint256 public constant MAX_DAILY_QUIZZES = 3; // 3 quizzes per day
-    uint256 public constant MIN_CONTRACT_BALANCE = 5 ether; // Min balance to operate
+    uint256 public constant MIN_CONTRACT_BALANCE = 1 ether; // Min balance to operate
 
     // ==================== STATE VARIABLES ====================
 
@@ -69,7 +69,7 @@ contract Quizelo is Ownable, ReentrancyGuard {
      * @dev Start a quiz
      */
     function startQuiz() external payable nonReentrant canTakeQuiz {
-        require(msg.value == QUIZ_FEE, "Must pay 0.5 CELO");
+        require(msg.value == QUIZ_FEE, "Must pay 0.1 CELO");
 
         uint256 currentNonce = userNonces[msg.sender];
         bytes32 sessionId = keccak256(abi.encodePacked(msg.sender, block.timestamp, currentNonce));
@@ -150,23 +150,102 @@ contract Quizelo is Ownable, ReentrancyGuard {
     // ==================== INTERNAL FUNCTIONS ====================
 
     /**
-     * @dev Calculate reward based on user status and score
-     */
-    function _calculateReward(address user, uint256 score) internal view returns (uint256) {
-        if (score < 60) return 0;
-
-        // Check if user already won today
-        if (hasWonToday[user]) {
-            // Max 0.7 CELO for subsequent wins
-            return 0.7 ether;
+ * @dev Calculate reward based on user status and score - NEW IMPROVED VERSION
+ * Range: 0.1 - 0.4 CELO with weighted distribution favoring smaller amounts
+ */
+function _calculateReward(address user, uint256 score) internal view returns (uint256) {
+    if (score < 60) return 0;
+    
+    // Check if user already won today
+    if (hasWonToday[user]) {
+        // For subsequent wins, give smaller random reward (0.1 - 0.2 CELO)
+        uint256 randomSeed = uint256(keccak256(abi.encodePacked(
+            block.timestamp, 
+            block.difficulty, 
+            user, 
+            score,
+            userNonces[user]
+        ))) % 100; // 0-99
+        
+        // 70% chance for 0.1, 20% for 0.15, 10% for 0.2
+        uint256 subsequentReward;
+        if (randomSeed < 70) {
+            subsequentReward = 0.1 ether;
+        } else if (randomSeed < 90) {
+            subsequentReward = 0.15 ether;
+        } else {
+            subsequentReward = 0.2 ether;
         }
-
-        // First win of the day - random reward between 0.6-1.0 CELO
-        uint256 randomSeed = uint256(keccak256(abi.encodePacked(block.timestamp, block.difficulty, user, score))) % 41; // 0-40
-
-        // 0.6 + (0 to 0.4) = 0.6 to 1.0 CELO
-        return 0.6 ether + (randomSeed * 0.01 ether);
+        
+        // Ensure contract has enough balance
+        return address(this).balance >= subsequentReward ? subsequentReward : 0;
     }
+    
+    // First win of the day - weighted random between 0.1-0.4 CELO
+    // Higher probability for smaller amounts
+    uint256 randomSeed = uint256(keccak256(abi.encodePacked(
+        block.timestamp, 
+        block.difficulty, 
+        user, 
+        score,
+        userNonces[user],
+        gasleft()
+    ))) % 100; // 0-99
+    
+    uint256 baseReward;
+    
+    // Weighted distribution:
+    // 40% chance: 0.1 CELO
+    // 25% chance: 0.15 CELO  
+    // 15% chance: 0.2 CELO
+    // 10% chance: 0.25 CELO
+    // 5% chance: 0.3 CELO
+    // 3% chance: 0.35 CELO
+    // 2% chance: 0.4 CELO
+    
+    if (randomSeed < 40) {
+        baseReward = 0.1 ether;      // 40% chance
+    } else if (randomSeed < 65) {
+        baseReward = 0.15 ether;     // 25% chance
+    } else if (randomSeed < 80) {
+        baseReward = 0.2 ether;      // 15% chance
+    } else if (randomSeed < 90) {
+        baseReward = 0.25 ether;     // 10% chance
+    } else if (randomSeed < 95) {
+        baseReward = 0.3 ether;      // 5% chance
+    } else if (randomSeed < 98) {
+        baseReward = 0.35 ether;     // 3% chance
+    } else {
+        baseReward = 0.4 ether;      // 2% chance
+    }
+    
+    // Score bonus: Higher scores get slight boost
+    uint256 scoreBonus = 0;
+    if (score >= 90) {
+        scoreBonus = 0.02 ether;     // +0.02 for 90%+
+    } else if (score >= 80) {
+        scoreBonus = 0.01 ether;     // +0.01 for 80%+
+    }
+    
+    uint256 finalReward = baseReward + scoreBonus;
+    
+    // Cap at 0.4 CELO maximum
+    if (finalReward > 0.4 ether) {
+        finalReward = 0.4 ether;
+    }
+    
+    // Ensure contract has enough balance
+    if (address(this).balance < finalReward) {
+        // If contract can't afford full reward, give proportional amount
+        if (address(this).balance >= 0.1 ether) {
+            return 0.1 ether; // Minimum fallback
+        } else {
+            return 0; // No reward if balance too low
+        }
+    }
+    
+    return finalReward;
+}
 
     /**
      * @dev Reset daily count if new day

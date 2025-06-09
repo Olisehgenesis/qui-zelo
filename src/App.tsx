@@ -181,6 +181,88 @@ const QuestionResult = ({ result, correctAnswer, userAnswer, onContinue, isLastQ
   );
 };
 
+// Quiz Info Modal Component
+const QuizInfoModal = ({ 
+  isVisible, 
+  onClose, 
+  onStart, 
+  quizFee, 
+  potentialWinnings,
+  isLoading 
+}: { 
+  isVisible: boolean, 
+  onClose: () => void, 
+  onStart: () => void,
+  quizFee: string,
+  potentialWinnings: string,
+  isLoading: boolean
+}) => {
+  if (!isVisible) return null;
+
+  return (
+    <div className="fixed inset-0 bg-gradient-to-br from-purple-900/20 via-blue-900/20 to-pink-900/20 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-6 sm:p-8 w-full max-w-sm mx-4 shadow-2xl border-2 border-purple-200 relative overflow-hidden">
+        {/* Animated background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-purple-50/80 via-pink-50/80 to-blue-50/80"></div>
+        <div className="absolute -top-10 -right-10 w-20 h-20 bg-gradient-to-br from-pink-300 to-purple-300 rounded-full opacity-20 animate-bounce"></div>
+        
+        <div className="relative text-center">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-purple-400 via-pink-500 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 shadow-2xl">
+            <Coins className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
+          </div>
+          
+          <h3 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 bg-clip-text text-transparent mb-3">
+            🎮 Ready to Quest?
+          </h3>
+          
+          {/* Quiz Fee Warning */}
+          <div className="bg-gradient-to-r from-orange-50 to-red-50 rounded-xl p-4 mb-4 border border-orange-200">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-slate-600">💰 Entry Fee</span>
+              <span className="text-sm font-bold text-orange-600">{quizFee} CELO</span>
+            </div>
+            <p className="text-xs text-slate-500">This amount will be deducted from your wallet</p>
+          </div>
+          
+          {/* Potential Winnings */}
+          <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 mb-6 border border-green-200">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-slate-600">🏆 Potential Winnings</span>
+              <span className="text-sm font-bold text-green-600">{potentialWinnings} CELO</span>
+            </div>
+            <p className="text-xs text-slate-500">Win by scoring 60% or higher!</p>
+          </div>
+          
+          {/* Action Buttons */}
+          <div className="space-y-3">
+            <button
+              onClick={onStart}
+              disabled={isLoading}
+              className="w-full bg-gradient-to-r from-purple-400 via-pink-500 to-blue-500 text-white py-3 sm:py-4 rounded-2xl font-bold hover:shadow-2xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-3"
+            >
+              {isLoading ? (
+                <LoadingSpinner size={6} color="text-white" />
+              ) : (
+                <>
+                  <Play className="w-5 h-5" />
+                  <span>🚀 Start Quest</span>
+                </>
+              )}
+            </button>
+            
+            <button
+              onClick={onClose}
+              className="w-full text-slate-500 py-2 text-sm hover:text-slate-600 transition-colors"
+            >
+              ⏰ Maybe later
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Enhanced Quiz Generation Modal with game-like animations
 const QuizGenerationModal = ({ isVisible , topic, onClose }: { isVisible: boolean, topic: any, onClose: () => void }) => {
   if (!isVisible) return null;
@@ -421,6 +503,7 @@ const QuizeloApp = () => {
   const [showQuestionResult, setShowQuestionResult] = useState(false);
   const [currentQuestionResult, setCurrentQuestionResult] = useState<any>(null);
   const [isAnswered, setIsAnswered] = useState(false);
+  const [showQuizInfo, setShowQuizInfo] = useState(false);
 
   // Your hooks
   const quizelo = useQuizelo();
@@ -494,7 +577,13 @@ const QuizeloApp = () => {
       return;
     }
 
-    await startQuizFlow(topic);
+    // Show quiz info modal instead of starting quiz directly
+    setShowQuizInfo(true);
+  };
+
+  const handleStartQuiz = async () => {
+    setShowQuizInfo(false);
+    await startQuizFlow();
   };
 
   const startQuizFlow = async (topic = selectedTopic) => {
@@ -1337,6 +1426,14 @@ const QuizeloApp = () => {
         networkError={networkError} 
         switchToCelo={switchToCelo}
         setShowNetworkModal={setShowNetworkModal}
+      />}
+      {showQuizInfo && <QuizInfoModal 
+        isVisible={showQuizInfo}
+        onClose={() => setShowQuizInfo(false)}
+        onStart={handleStartQuiz}
+        quizFee={quizelo.quizFee ? quizelo.formatEther(quizelo.quizFee as bigint) : '0.1'}
+        potentialWinnings={quizelo.quizFee ? quizelo.formatEther((quizelo.quizFee as bigint) * 5n) : '0.5'}
+        isLoading={quizelo.isLoading}
       />}
     </div>
   );
