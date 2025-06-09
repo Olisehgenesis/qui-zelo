@@ -131,6 +131,8 @@ export const useQuizelo = () => {
   const [activeQuizTakers, setActiveQuizTakers] = useState<string[]>([]);
   const [currentQuizSession, setCurrentQuizSession] = useState<QuizSession | null>(null);
 
+  console.log('currentQuizSession', setCurrentQuizSession);
+
   // Contract read hooks for constants
   const { data: quizFee } = useReadContract({
     address: QUIZELO_CONTRACT_ADDRESS,
