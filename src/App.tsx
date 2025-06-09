@@ -21,6 +21,8 @@ import {
   Star,
   Target,
 } from 'lucide-react';
+import { celo } from 'viem/chains';
+import { useSwitchChain, useChainId } from 'wagmi';
 
 // Import your hooks
 import { useQuizelo } from './hooks/useQuizelo';
@@ -156,6 +158,111 @@ const TransactionModal = ({ isVisible, status, txHash, onClose, quizelo }: {
   );
 };
 
+// Network Check Modal Component
+const NetworkCheckModal = ({ 
+  showNetworkModal,
+  isSwitchingNetwork, 
+  networkError, 
+  switchToCelo,
+  setShowNetworkModal 
+}: { 
+  showNetworkModal: boolean,
+  isSwitchingNetwork: boolean, 
+  networkError: string, 
+  switchToCelo: () => Promise<void>,
+  setShowNetworkModal: (show: boolean) => void 
+}) => {
+  if (!showNetworkModal) return null;
+  
+  return (
+    <div className="fixed inset-0 bg-gradient-to-br from-orange-900/20 via-red-900/20 to-pink-900/20 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-6 sm:p-8 w-full max-w-sm mx-4 shadow-2xl border-2 border-orange-200 relative overflow-hidden">
+        {/* Animated background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-orange-50/80 via-red-50/80 to-pink-50/80"></div>
+        <div className="absolute -top-10 -right-10 w-20 h-20 bg-gradient-to-br from-orange-300 to-red-300 rounded-full opacity-20 animate-bounce"></div>
+        <div className="absolute -bottom-10 -left-10 w-16 h-16 bg-gradient-to-br from-pink-300 to-red-300 rounded-full opacity-20 animate-bounce delay-75"></div>
+        
+        <div className="relative text-center">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-orange-400 via-red-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 shadow-2xl">
+            {isSwitchingNetwork ? (
+              <LoadingSpinner size={8} color="text-white" />
+            ) : (
+              <AlertCircle className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
+            )}
+          </div>
+          
+          <h3 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-orange-600 via-red-600 to-pink-600 bg-clip-text text-transparent mb-3">
+            {isSwitchingNetwork ? '⚡ Switching Networks' : '🔄 Wrong Network'}
+          </h3>
+          
+          <p className="text-slate-600 text-sm sm:text-base mb-6">
+            {isSwitchingNetwork 
+              ? '🌟 Switching to Celo network...' 
+              : '🎮 Quizelo runs on the Celo network! Please switch to continue your adventure.'
+            }
+          </p>
+          
+          {/* Network Info */}
+          <div className="bg-gradient-to-r from-orange-50 to-red-50 rounded-xl p-4 mb-6 border border-orange-200">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-slate-500 font-semibold">Current Network</span>
+              <span className="text-xs text-red-600 font-bold">❌ Wrong</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-slate-500 font-semibold">Required Network</span>
+              <span className="text-xs text-green-600 font-bold">✅ Celo</span>
+            </div>
+          </div>
+          
+          {/* Error Message */}
+          {networkError && (
+            <div className="bg-gradient-to-r from-red-100 to-pink-100 border border-red-200 rounded-xl p-3 mb-4">
+              <p className="text-red-700 text-xs font-semibold">⚠️ {networkError}</p>
+            </div>
+          )}
+          
+          {/* Action Buttons */}
+          <div className="space-y-3">
+            <button
+              onClick={switchToCelo}
+              disabled={isSwitchingNetwork}
+              className="w-full bg-gradient-to-r from-orange-400 via-red-500 to-pink-500 text-white py-3 sm:py-4 rounded-2xl font-bold hover:shadow-2xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-3 relative overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-orange-400 via-red-500 to-pink-500 animate-pulse opacity-50"></div>
+              <div className="relative flex items-center space-x-3">
+                {isSwitchingNetwork ? (
+                  <LoadingSpinner size={6} color="text-white" />
+                ) : (
+                  <RefreshCw className="w-5 h-5" />
+                )}
+                <span>
+                  {isSwitchingNetwork ? '🔄 Switching...' : '🚀 Switch to Celo'}
+                </span>
+              </div>
+            </button>
+            
+            {!isSwitchingNetwork && (
+              <button
+                onClick={() => setShowNetworkModal(false)}
+                className="w-full text-slate-500 py-2 text-sm hover:text-slate-600 transition-colors"
+              >
+                ⏰ Maybe later
+              </button>
+            )}
+          </div>
+          
+          {/* Help Text */}
+          <div className="mt-4 p-3 bg-blue-50 rounded-xl border border-blue-200">
+            <p className="text-xs text-blue-700 font-semibold">
+              💡 Tip: You can also manually switch networks in your wallet settings
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const QuizeloApp = () => {
   const [activeTab, setActiveTab] = useState('home');
   const [showConnectWallet, setShowConnectWallet] = useState(false);
@@ -172,11 +279,16 @@ const QuizeloApp = () => {
   const [timeLeft, setTimeLeft] = useState(15);
   const [quizSessionId, setQuizSessionId] = useState<string | null>(null);
   const [finalScore, setFinalScore] = useState<ScoreResult | null>(null);
+  const [showNetworkModal, setShowNetworkModal] = useState(false);
+  const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
+  const [networkError, setNetworkError] = useState('');
 
   // Your hooks
   const quizelo = useQuizelo();
   const { topics, selectedTopic, selectTopic } = useTopics();
   const { generateQuestions, loading: aiLoading, error: aiError, questions, markAnswer, calculateScore } = useAI();
+  const { switchChain } = useSwitchChain();
+  const chainId = useChainId();
 
   // Timer effect for quiz questions
   useEffect(() => {
@@ -202,12 +314,44 @@ const QuizeloApp = () => {
     }
   }, [quizelo.isConnected]);
 
+  // Check network on connection
+  useEffect(() => {
+    if (quizelo.isConnected && chainId !== celo.id) {
+      setShowNetworkModal(true);
+      // Auto-attempt to switch
+      switchToCelo();
+    } else if (quizelo.isConnected && chainId === celo.id) {
+      setShowNetworkModal(false);
+    }
+  }, [quizelo.isConnected, chainId]);
+
+  const switchToCelo = async () => {
+    try {
+      setIsSwitchingNetwork(true);
+      setNetworkError('');
+      await switchChain({ chainId: celo.id });
+      setShowNetworkModal(false);
+    } catch (error) {
+      console.error('Failed to switch to Celo network:', error);
+      setNetworkError('Failed to switch to Celo network. Please try manually switching in your wallet.');
+    } finally {
+      setIsSwitchingNetwork(false);
+    }
+  };
+
   const handleTopicSelect = async (topic: any) => {
     selectTopic(topic);
     setShowTopicModal(false);
     
     if (!quizelo.isConnected) {
       setShowConnectWallet(true);
+      return;
+    }
+    
+    // Check if on correct network
+    if (chainId !== celo.id) {
+      setShowNetworkModal(true);
+      await switchToCelo();
       return;
     }
 
@@ -217,6 +361,13 @@ const QuizeloApp = () => {
   const startQuizFlow = async (topic = selectedTopic) => {
     if (!topic) {
       setShowTopicModal(true);
+      return;
+    }
+    
+    // Double check network before starting
+    if (chainId !== celo.id) {
+      setShowNetworkModal(true);
+      await switchToCelo();
       return;
     }
 
@@ -993,6 +1144,13 @@ const QuizeloApp = () => {
         onClose={() => setShowTransactionModal(false)}
         quizelo={quizelo}
       />
+      {showNetworkModal && <NetworkCheckModal 
+        showNetworkModal={showNetworkModal}
+        isSwitchingNetwork={isSwitchingNetwork} 
+        networkError={networkError} 
+        switchToCelo={switchToCelo}
+        setShowNetworkModal={setShowNetworkModal}
+      />}
     </div>
   );
 };
