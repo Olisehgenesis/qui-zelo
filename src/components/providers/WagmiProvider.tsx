@@ -1,41 +1,42 @@
-import "@rainbow-me/rainbowkit/styles.css";
-import { walletConnectWallet } from '@rainbow-me/rainbowkit/wallets';
-import { http, WagmiProvider } from "wagmi";
-import { RainbowKitProvider, getDefaultConfig } from "@rainbow-me/rainbowkit";
-
-import { celo, celoAlfajores} from "wagmi/chains";
+import { createConfig, http, WagmiProvider } from "wagmi";
+import { celo , celoAlfajores} from "wagmi/chains";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { farcasterFrame } from "@farcaster/frame-wagmi-connector";
+import { metaMask, walletConnect } from 'wagmi/connectors';
+import React from "react";
 
-const wallets = [
-  {
-    groupName: 'Recommended',
-    wallets: [walletConnectWallet],
-  },
-];
 
-const projectId = process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID || "";
-if (!projectId) {
-  console.warn("WalletConnect Project ID não está definido! Isso pode causar problemas de conexão.");
-}
 
-export const config = getDefaultConfig({
-  appName: "Quizelo",
-  projectId: process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID || "",
+export const config = createConfig({
   chains: [celo, celoAlfajores],
   transports: {
     [celo.id]: http(),
     [celoAlfajores.id]: http(),
   },
-  wallets,
-  ssr: true,
+  connectors: [
+    farcasterFrame(),
+    metaMask({
+      dappMetadata: {
+        name: "Quizelo",
+        url: "https://quizelo.com",
+      }
+    }),
+    walletConnect({
+      projectId: process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID || "",
+    }),
+  ],
 });
 
 const queryClient = new QueryClient();
 
+
+
 export default function Provider({ children }: { children: React.ReactNode }) {
   return (
     <WagmiProvider config={config}>
-      <QueryClientProvider client={queryClient}><RainbowKitProvider>{children}</RainbowKitProvider></QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        {children}
+      </QueryClientProvider>
     </WagmiProvider>
   );
 }

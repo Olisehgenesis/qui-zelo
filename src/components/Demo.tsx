@@ -22,15 +22,17 @@ import {
 } from 'lucide-react';
 import { celo } from 'viem/chains';
 import { useSwitchChain, useChainId, useAccount, useConnect } from 'wagmi';
+import { Connector } from 'wagmi';
+
 import { injected } from 'wagmi/connectors';
 import { sdk } from '@farcaster/frame-sdk';
 import type { Context } from '@farcaster/frame-sdk';
-import { ConnectButton } from "@rainbow-me/rainbowkit";
 
 // Import your hooks
 import { useQuizelo } from '../hooks/useQuizelo';
 import { useTopics, TopicWithMetadata } from '../hooks/useTopics';
 import { useAI } from '../hooks/useAI';
+import farcasterFrame from '@farcaster/frame-wagmi-connector';
 
 interface ScoreResult {
   percentage: number;
@@ -549,6 +551,7 @@ const QuizeloApp = () => {
   const [showQuizInfo, setShowQuizInfo] = useState(false);
   const [context, setContext] = useState<Context.FrameContext>();
   const [isSDKLoaded, setIsSDKLoaded] = useState(false);
+  const [isMiniApp, setIsMiniApp] = useState(false);
 
   // Your hooks
   const quizelo = useQuizelo();
@@ -557,7 +560,7 @@ const QuizeloApp = () => {
   const { switchChain } = useSwitchChain();
   const chainId = useChainId();
   const { address, isConnected } = useAccount();
-  const { connect } = useConnect();
+  const { connect, connectors } = useConnect();
 
   // Detect if we're in Farcaster
   const isInFarcaster = context?.client?.clientFid !== undefined;
@@ -568,6 +571,7 @@ const QuizeloApp = () => {
     setIsAnswered(true);
     const newAnswers = [...userAnswers, answerIndex];
     setUserAnswers(newAnswers);
+
     
     // Get result for this question
     const result = markAnswer(currentQuestionIndex, answerIndex);
@@ -604,12 +608,16 @@ const QuizeloApp = () => {
   // Check wallet connection on mount and handle disconnection
   useEffect(() => {
     // Check if wallet is already connected
-    if (address && !quizelo.isConnected) {
+
+    if (isMiniApp && !isConnected) {
+      setShowConnectWallet(false);
+      connect({ connector: farcasterFrame() });
+    } else if (address && !quizelo.isConnected) {
       // Wallet is connected but quizelo hook hasn't detected it yet
       // This will be handled by the quizelo hook's own useEffect
       console.log('Wallet detected:', address);
-    } else if (!address && !quizelo.isConnected) {
-      // No wallet connected, show connect modal
+    } else if (!address && !quizelo.isConnected && !isMiniApp) {
+      // No wallet connected and not in mini app, show connect modal
       setShowConnectWallet(true);
     } else if (address && quizelo.isConnected) {
       // Wallet is connected and quizelo hook has detected it
@@ -618,7 +626,7 @@ const QuizeloApp = () => {
       // Wallet was disconnected
       setShowConnectWallet(true);
     }
-  }, [address, quizelo.isConnected]);
+  }, [address, quizelo.isConnected, isMiniApp, isConnected, connect]);
 
   const switchToCelo = useCallback(async () => {
     try {
@@ -1007,14 +1015,14 @@ const QuizeloApp = () => {
     return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
   };
 
-  const formatTimeRemaining = (seconds: number ) => {
-    if (seconds <= 0) return 'Ready! 🚀';
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  // const formatTimeRemaining = (seconds: number ) => {
+  //   if (seconds <= 0) return 'Ready! 🚀';
+  //   const mins = Math.floor(seconds / 60);
+  //   const secs = seconds % 60;
+  //   return `${mins}:${secs.toString().padStart(2, '0')}`;
+  // };
   
-  // Enhanced Connect Wallet Modal
+  // Enhanced Connect Wallet Modal with Farcaster support
   const ConnectWalletModal = () => (
     <div className="fixed inset-0 bg-gradient-to-br from-purple-900/20 via-blue-900/20 to-pink-900/20 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <div className="bg-white/90 backdrop-blur-sm rounded-3xl p-6 sm:p-8 w-full max-w-sm mx-4 shadow-2xl border-2 border-purple-200 relative overflow-hidden">
@@ -1029,18 +1037,66 @@ const QuizeloApp = () => {
             🔗 Connect & Play!
           </h3>
           <p className="text-slate-600 text-sm sm:text-base mb-6 sm:mb-8">
-            🎮 Connect your Celo wallet to start your learning adventure and earn rewards!
+            {isMiniApp && isInFarcaster 
+              ? '🎮 Connect your wallet to start your learning adventure!' 
+              : '🎮 Connect your Celo wallet to start your learning adventure and earn rewards!'
+            }
           </p>
           
-          <button
-            onClick={() => {
-              connect({ connector: injected() });
-              setShowConnectWallet(false);
-            }}
-            className="w-full bg-gradient-to-r from-purple-400 via-pink-500 to-blue-500 text-white py-3 sm:py-4 rounded-2xl font-bold hover:shadow-2xl transition-all transform hover:scale-105 mb-4"
-          >
-            🚀 Connect Wallet
-          </button>
+          {isMiniApp && isInFarcaster ? (
+            // In Farcaster Mini App, show specific connectors
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  const farcasterConnector = connectors.find((c: Connector) => c.id === 'farcasterFrame');
+                  if (farcasterConnector) {
+                    connect({ connector: farcasterConnector });
+                  } else {
+                    connect({ connector: injected() });
+                  }
+                  setShowConnectWallet(false);
+                }}
+                className="w-full bg-gradient-to-r from-purple-400 via-pink-500 to-blue-500 text-white py-3 sm:py-4 rounded-2xl font-bold hover:shadow-2xl transition-all transform hover:scale-105 mb-3"
+              >
+                🎯 Connect in Farcaster
+              </button>
+              
+              {connectors.length > 1 && (
+                <button
+                  onClick={() => {
+                    connect({ connector: connectors.find((c: Connector) => c.name.includes('Coinbase')) || connectors[1] });
+                    setShowConnectWallet(false);
+                  }}
+                  className="w-full bg-blue-500 text-white py-3 rounded-2xl font-bold hover:shadow-xl transition-all"
+                >
+                  🔵 Coinbase Wallet
+                </button>
+              )}
+              
+              {connectors.length > 2 && (
+                <button
+                  onClick={() => {
+                    connect({ connector: connectors.find((c: Connector) => c.name.includes('MetaMask')) || connectors[2] });
+                    setShowConnectWallet(false);
+                  }}
+                  className="w-full bg-orange-500 text-white py-3 rounded-2xl font-bold hover:shadow-xl transition-all"
+                >
+                  🦊 MetaMask
+                </button>
+              )}
+            </div>
+          ) : (
+            // Outside Farcaster or regular web, show default injected wallet
+            <button
+              onClick={() => {
+                connect({ connector: injected() });
+                setShowConnectWallet(false);
+              }}
+              className="w-full bg-gradient-to-r from-purple-400 via-pink-500 to-blue-500 text-white py-3 sm:py-4 rounded-2xl font-bold hover:shadow-2xl transition-all transform hover:scale-105 mb-4"
+            >
+              🚀 Connect Wallet
+            </button>
+          )}
           
           <button
             onClick={() => setShowConnectWallet(false)}
@@ -1098,10 +1154,10 @@ const QuizeloApp = () => {
     </div>
   );
   
-  // Enhanced Home Content with gamified design
+  // Enhanced Home Content with Farcaster integration
   const HomeContent = () => (
     <div className="p-4 sm:p-6 pb-32 space-y-6 overflow-y-auto">
-      {/* Hero Section with game vibes */}
+      {/* Hero Section with Farcaster awareness */}
       <div className="bg-gradient-to-br from-purple-400 via-pink-500 to-blue-500 rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden shadow-2xl">
         <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-bl from-yellow-300/20 to-transparent rounded-full -translate-y-20 translate-x-20 animate-pulse"></div>
         <div className="absolute bottom-0 left-0 w-32 h-32 bg-gradient-to-tr from-cyan-300/20 to-transparent rounded-full translate-y-16 -translate-x-16 animate-pulse delay-75"></div>
@@ -1114,7 +1170,9 @@ const QuizeloApp = () => {
             </div>
             <div>
               <h1 className="text-3xl sm:text-4xl font-black">Quizelo</h1>
-              <p className="text-purple-100 font-bold text-sm sm:text-base">🌱 Powered by Celo Magic</p>
+              <p className="text-purple-100 font-bold text-sm sm:text-base">
+                {isMiniApp && isInFarcaster ? '🎭 Powered by Farcaster x Celo' : '🌱 Powered by Celo Magic'}
+              </p>
             </div>
           </div>
           
@@ -1129,7 +1187,10 @@ const QuizeloApp = () => {
                   <Wallet className="w-5 h-5 text-purple-100" />
                   <div>
                     <p className="text-purple-100 text-sm font-bold">
-                      {isInFarcaster ? '🎮 Farcaster Player' : '🎯 Player Connected'}
+                      {isMiniApp && isInFarcaster 
+                        ? `🎭 Farcaster Player (FID: ${context?.user?.fid || 'N/A'})` 
+                        : '🎯 Player Connected'
+                      }
                     </p>
                     <p className="font-mono text-white text-sm">{formatAddress(address)}</p>
                   </div>
@@ -1158,8 +1219,12 @@ const QuizeloApp = () => {
                 <div className="flex items-center space-x-3">
                   <Wallet className="w-5 h-5 text-purple-100" />
                   <div>
-                    <p className="text-purple-100 text-sm font-bold">🔌 Wallet Not Connected</p>
-                    <p className="text-purple-100 text-xs">Connect to start playing!</p>
+                    <p className="text-purple-100 text-sm font-bold">
+                      {isMiniApp && isInFarcaster ? '🔌 Wallet Not Connected in Farcaster' : '🔌 Wallet Not Connected'}
+                    </p>
+                    <p className="text-purple-100 text-xs">
+                      {isMiniApp && isInFarcaster ? 'Connect your wallet to play!' : 'Connect to start playing!'}
+                    </p>
                   </div>
                 </div>
                 <button
@@ -1173,7 +1238,43 @@ const QuizeloApp = () => {
           )}
         </div>
       </div>
-  
+
+      {/* Add Farcaster Mini App-specific features */}
+      {isMiniApp && isInFarcaster && (
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-xl border border-white/50">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="w-10 h-10 bg-gradient-to-br from-purple-400 to-pink-500 rounded-xl flex items-center justify-center">
+              <span className="text-white text-lg">🎭</span>
+            </div>
+            <div>
+              <h3 className="font-bold text-slate-800">Farcaster Mini App</h3>
+              <p className="text-slate-600 text-sm">Special features for Farcaster users</p>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => {
+                const shareText = `🎮 Just played Quizelo and learned about ${selectedTopic?.title || 'Celo'}! Join me on this epic blockchain learning adventure and earn CELO rewards! 🌱💰\n\nTry it yourself: ${window.location.origin}`;
+                const encodedText = encodeURIComponent(shareText);
+                const composeUrl = `https://warpcast.com/~/compose?text=${encodedText}`;
+                sdk.actions.openUrl(composeUrl);
+              }}
+              className="p-3 rounded-xl text-sm font-medium bg-blue-100 text-blue-600 hover:bg-blue-200 transition-all"
+            >
+              📤 Share Quizelo
+            </button>
+            
+            <button
+              onClick={() => sdk.actions.close()}
+              className="p-3 rounded-xl text-sm font-medium bg-red-100 text-red-600 hover:bg-red-200 transition-all"
+            >
+              ❌ Close App
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Game Stats */}
       {isConnected && quizelo.userInfo && (
         <div className="grid grid-cols-2 gap-4">
@@ -1197,13 +1298,16 @@ const QuizeloApp = () => {
               <span className="text-xs sm:text-sm font-bold text-slate-600">⏰ Next Quest</span>
             </div>
             <p className="text-lg sm:text-xl font-black bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
-              {formatTimeRemaining(quizelo.timeUntilNextQuiz)}
+              {quizelo.timeUntilNextQuiz > 0 
+                ? `${Math.floor(quizelo.timeUntilNextQuiz / 60)}:${(quizelo.timeUntilNextQuiz % 60).toString().padStart(2, '0')}`
+                : 'Ready! 🚀'
+              }
             </p>
           </div>
         </div>
       )}
-  
-      {/* Contract Status with game styling */}
+
+      {/* Contract Status */}
       {quizelo.contractStats && (
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-xl border border-white/50 hover:shadow-2xl transition-all">
           <div className="flex items-center justify-between mb-4">
@@ -1233,8 +1337,8 @@ const QuizeloApp = () => {
           </div>
         </div>
       )}
-  
-      {/* Selected Topic with enhanced styling */}
+
+      {/* Selected Topic */}
       {selectedTopic && (
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-xl border border-white/50 hover:shadow-2xl transition-all">
           <div className="flex items-center space-x-4 mb-4">
@@ -1255,7 +1359,7 @@ const QuizeloApp = () => {
           </button>
         </div>
       )}
-  
+
       {/* Enhanced Status Messages */}
       {quizelo.error && (
         <div className="bg-gradient-to-r from-red-100 to-pink-100 border-2 border-red-200 rounded-2xl p-4 shadow-lg">
@@ -1265,7 +1369,7 @@ const QuizeloApp = () => {
           </div>
         </div>
       )}
-  
+
       {quizelo.success && (
         <div className="bg-gradient-to-r from-green-100 to-emerald-100 border-2 border-green-200 rounded-2xl p-4 shadow-lg">
           <div className="flex items-center space-x-3">
@@ -1274,7 +1378,7 @@ const QuizeloApp = () => {
           </div>
         </div>
       )}
-  
+
       {aiError && (
         <div className="bg-gradient-to-r from-orange-100 to-yellow-100 border-2 border-orange-200 rounded-2xl p-4 shadow-lg">
           <div className="flex items-center space-x-3">
@@ -1395,14 +1499,77 @@ const QuizeloApp = () => {
     </div>
   );
   
-  // Call ready when the app is mounted and initial data is loaded
+  // SDK initialization with Mini App detection
+  useEffect(() => {
+    const load = async () => {
+      try {
+        // Check if running in Mini App by checking the context
+        const frameContext = await sdk.context;
+        setContext(frameContext);
+        
+        const miniAppStatus = frameContext?.client?.clientFid !== undefined;
+        setIsMiniApp(miniAppStatus);
+        
+        if (miniAppStatus) {
+          // Call ready to dismiss Farcaster's loading screen
+          await sdk.actions.ready();
+        
+          
+        }
+        
+        setIsSDKLoaded(true);
+      } catch (error) {
+        console.error('Error loading SDK:', error);
+        // Still set as loaded to avoid infinite loading
+        setIsSDKLoaded(true);
+      }
+    };
+    
+    load();
+  }, []);
+
+  // Auto-connect logic for Farcaster Mini App users
+  useEffect(() => {
+    if (isSDKLoaded && isMiniApp && isInFarcaster && !isConnected) {
+      // Try to connect with Farcaster frame connector first
+      const farcasterConnector = connectors.find((c: Connector) => c.id === 'farcasterFrame');
+      if (farcasterConnector) {
+        connect({ connector: farcasterConnector });
+      } else {
+        // Fallback to injected wallet
+        connect({ connector: injected() });
+      }
+    }
+  }, [isSDKLoaded, isMiniApp, isInFarcaster, isConnected, connect, connectors]);
+
+  // Handle wallet connection state
+  useEffect(() => {
+    if (isMiniApp && isInFarcaster) {
+      // In Farcaster Mini App, we don't show connect modal initially
+      setShowConnectWallet(false);
+    } else if (!isConnected) {
+      // Outside Farcaster or regular web, show connect modal if not connected
+      setShowConnectWallet(true);
+    } else {
+      setShowConnectWallet(false);
+    }
+  }, [isConnected, isMiniApp, isInFarcaster]);
+
+  // Network checking
+  useEffect(() => {
+    if (isConnected && chainId !== celo.id) {
+      setShowNetworkModal(true);
+      switchToCelo();
+    } else if (isConnected && chainId === celo.id) {
+      setShowNetworkModal(false);
+    }
+  }, [isConnected, chainId, switchToCelo]);
+
+  // Initialize app when SDK is loaded
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        // Call ready immediately to dismiss splash screen
-        await sdk.actions.ready();
-        
-        // Then load initial data in the background
+        // Load initial data
         await Promise.all([
           quizelo.refetchUserInfo(),
           quizelo.refetchContractStats(),
@@ -1410,56 +1577,36 @@ const QuizeloApp = () => {
         ]);
       } catch (error) {
         console.error('Error initializing app:', error);
-        // Still call ready even if there's an error to avoid blank screen
-        await sdk.actions.ready();
       }
     };
 
-    initializeApp();
-  }, [quizelo]);
+    if (isSDKLoaded) {
+      initializeApp();
+    }
+  }, [isSDKLoaded, quizelo]);
   
-  // Auto-connect with injected wallet in Farcaster
-  useEffect(() => {
-    if (isInFarcaster && !isConnected) {
-      // Auto-connect using injected wallet
-      connect({ connector: injected() });
-    }
-  }, [isInFarcaster, isConnected, connect]);
-
-  // Auto-hide connect wallet modal in Farcaster
-  useEffect(() => {
-    if (!isInFarcaster && !isConnected) {
-      setShowConnectWallet(true);
-    } else {
-      setShowConnectWallet(false);
-    }
-  }, [isConnected, isInFarcaster]);
-
-  // SDK initialization with ready call
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const frameContext = await sdk.context;
-        setContext(frameContext);
-        
-        // Call ready immediately to dismiss Farcaster's loading
-        await sdk.actions.ready();
-        
-        setIsSDKLoaded(true);
-      } catch (error) {
-        console.error('Error loading SDK:', error);
-        await sdk.actions.ready();
-        setIsSDKLoaded(true);
-      }
-    };
-    
-    if (sdk && !isSDKLoaded) {
-      load();
-    }
-  }, [isSDKLoaded]);
+  // Loading screen for SDK
+  if (!isSDKLoaded) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-100 via-pink-100 to-blue-100 flex items-center justify-center">
+        <div className="text-center">
+          <LoadingSpinner size={12} color="text-purple-500" />
+          <p className="mt-4 text-purple-600 font-bold">Loading Quizelo...</p>
+        </div>
+      </div>
+    );
+  }
   
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-100 via-pink-100 to-blue-100">
+    <div 
+      className="min-h-screen bg-gradient-to-br from-purple-100 via-pink-100 to-blue-100"
+      style={{
+        paddingTop: context?.client?.safeAreaInsets?.top ?? 0,
+        paddingBottom: context?.client?.safeAreaInsets?.bottom ?? 0,
+        paddingLeft: context?.client?.safeAreaInsets?.left ?? 0,
+        paddingRight: context?.client?.safeAreaInsets?.right ?? 0,
+      }}
+    >
       {/* Main Content */}
       <div className="min-h-screen max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-32 sm:pb-40">
         {showResults ? (
@@ -1474,7 +1621,7 @@ const QuizeloApp = () => {
           </div>
         )}
       </div>
-  
+
       {/* Enhanced Start Quiz FAB */}
       {!isInQuiz && !showResults && (
         <button
@@ -1490,7 +1637,7 @@ const QuizeloApp = () => {
           )}
         </button>
       )}
-  
+
       {/* Enhanced Bottom Navigation */}
       {!isInQuiz && !showResults && (
         <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t-2 border-purple-200 px-4 sm:px-6 py-4 z-20 shadow-2xl">
@@ -1506,7 +1653,7 @@ const QuizeloApp = () => {
               <Home className="w-6 h-6" />
               <span className="text-xs font-bold">🏠 Home</span>
             </button>
-  
+
             <button
               onClick={() => setActiveTab('leaderboard')}
               className={`flex flex-col items-center space-y-2 py-3 px-4 rounded-2xl transition-all transform hover:scale-110 ${
@@ -1518,7 +1665,7 @@ const QuizeloApp = () => {
               <Trophy className="w-6 h-6" />
               <span className="text-xs font-bold">🏆 Ranks</span>
             </button>
-  
+
             <button
               onClick={() => setActiveTab('profile')}
               className={`flex flex-col items-center space-y-2 py-3 px-4 rounded-2xl transition-all transform hover:scale-110 ${
@@ -1533,7 +1680,7 @@ const QuizeloApp = () => {
           </div>
         </div>
       )}
-  
+
       {/* Modals */}
       {showConnectWallet && <ConnectWalletModal />}
       {showTopicModal && <TopicModal />}
