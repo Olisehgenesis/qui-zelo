@@ -1634,39 +1634,39 @@ const QuizeloApp = () => {
   }
   
   // Add retry mechanism for mini app data loading
-  useEffect(() => {
-    if (isMiniApp && isConnected && !quizelo.userInfo && !quizelo.isLoading) {
-      const retryLoadData = async () => {
-        const delays = [1000, 2000, 4000]; // Progressive delays
-        for (const delay of delays) {
-          await new Promise(resolve => setTimeout(resolve, delay));
-          try {
-            await quizelo.refetchUserInfo();
-            if (quizelo.userInfo) break; // Success, stop retrying
-          } catch (error) {
-            console.log(`Retry attempt failed after ${delay}ms:`, error);
-          }
-        }
-      };
+  // useEffect(() => {
+  //   if (isMiniApp && isConnected && !quizelo.userInfo && !quizelo.isLoading) {
+  //     const retryLoadData = async () => {
+  //       const delays = [1000, 2000, 4000]; // Progressive delays
+  //       for (const delay of delays) {
+  //         await new Promise(resolve => setTimeout(resolve, delay));
+  //         try {
+  //           await quizelo.refetchUserInfo();
+  //           if (quizelo.userInfo) break; // Success, stop retrying
+  //         } catch (error) {
+  //           console.log(`Retry attempt failed after ${delay}ms:`, error);
+  //         }
+  //       }
+  //     };
       
-      retryLoadData();
-    }
-  }, [isMiniApp, isConnected, quizelo.userInfo, quizelo.isLoading, quizelo.refetchUserInfo]);
+  //     retryLoadData();
+  //   }
+  // }, [isMiniApp, isConnected, quizelo.userInfo, quizelo.isLoading, quizelo.refetchUserInfo]);
 
   // Add debugging for mini app environments
-  useEffect(() => {
-    if (isMiniApp) {
-      console.log('Debug mini app stats display:', {
-        isMiniApp,
-        isConnected,
-        hasUserInfo: !!quizelo.userInfo,
-        isLoading: quizelo.isLoading,
-        userInfo: quizelo.userInfo,
-        maxDailyQuizzes: quizelo.maxDailyQuizzes,
-        timeUntilNextQuiz: quizelo.timeUntilNextQuiz
-      });
-    }
-  }, [isMiniApp, isConnected, quizelo.userInfo, quizelo.isLoading, quizelo.maxDailyQuizzes, quizelo.timeUntilNextQuiz]);
+  // useEffect(() => {
+  //   if (isMiniApp) {
+  //     console.log('Debug mini app stats display:', {
+  //       isMiniApp,
+  //       isConnected,
+  //       hasUserInfo: !!quizelo.userInfo,
+  //       isLoading: quizelo.isLoading,
+  //       userInfo: quizelo.userInfo,
+  //       maxDailyQuizzes: quizelo.maxDailyQuizzes,
+  //       timeUntilNextQuiz: quizelo.timeUntilNextQuiz
+  //     });
+  //   }
+  // }, [isMiniApp, isConnected, quizelo.userInfo, quizelo.isLoading, quizelo.maxDailyQuizzes, quizelo.timeUntilNextQuiz]);
   
   return (
     <div 
