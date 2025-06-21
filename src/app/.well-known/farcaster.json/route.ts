@@ -14,11 +14,11 @@ export async function GET() {
     },
     frame: {
       version: "1",
-      name: "Buy Hypercert V2",
+      name: "Quizelo",
       iconUrl: `${appUrl}/celosplash.png`,
       homeUrl: appUrl,
       imageUrl: `${appUrl}/tipme.png`,
-      buttonTitle: "Launch Frame",
+      buttonTitle: "Play & Earn",
       splashImageUrl: `${appUrl}/celosplash.png`,
       splashBackgroundColor: "#f7f7f7",
       webhookUrl: `${appUrl}/api/webhook`,

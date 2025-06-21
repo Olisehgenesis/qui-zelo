@@ -12,10 +12,10 @@ const frame = {
   imageUrl: `${appUrl}/tipme.png`,
   // This is the button displayed when sharing the link.
   button: {
-    title: "Buy Hypercert",
+    title: "Play & Earn",
     action: {
       type: "launch_frame",
-      name: "Buy Hypercert",
+      name: "Play & Earn",
       url: appUrl,
       splashImageUrl: `${appUrl}/celo
       `,
@@ -28,10 +28,10 @@ export const revalidate = 300;
 
 export async function generateMetadata(): Promise<Metadata> {
   return {
-    title: "Buy Hypercert",
+    title: "Quizelo",
     openGraph: {
-      title: "Buy Hypercert",
-      description: "Tip your friends and favorite creators with crypto!",
+      title: "Quizelo",
+      description: "AI-powered Celo quizzes for Farcaster",
     },
     other: {
       "fc:frame": JSON.stringify(frame),

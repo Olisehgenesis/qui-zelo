@@ -19,7 +19,7 @@ if (!projectId) {
 }
 
 export const config = getDefaultConfig({
-  appName: "Buy Hypercert",
+  appName: "Quizelo",
   projectId: process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID || "",
   chains: [celo, celoAlfajores],
   transports: {

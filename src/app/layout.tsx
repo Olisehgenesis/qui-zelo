@@ -5,8 +5,8 @@ import "~/app/globals.css";
 import { Providers } from "~/app/providers";
 
 export const metadata: Metadata = {
-  title: "Buy Hypercert",
-  description: "Buy Hypercert Frame",
+  title: "Quizelo",
+  description: "AI-powered Celo quizzes for Farcaster",
 };
 
 export default async function RootLayout({
