@@ -1391,7 +1391,7 @@ const QuizeloApp = () => {
       {!isInQuiz && !showResults && (
         <button
           onClick={() => setShowTopicModal(true)}
-          disabled={quizelo.isLoading || aiLoading || (quizelo.userInfo && !quizelo.userInfo.canQuiz)}
+          disabled={quizelo.isLoading || aiLoading || (quizelo.userInfo ? !quizelo.userInfo.canQuiz : false)}
           className="fixed bottom-32 sm:bottom-36 right-4 sm:right-6 w-16 h-16 sm:w-18 sm:h-18 bg-gradient-to-r from-pink-400 via-purple-500 to-blue-500 rounded-full shadow-2xl flex items-center justify-center hover:shadow-pink-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed z-10 transform hover:scale-110 active:scale-95 animate-pulse border-4 border-white/80"
           title={quizelo.userInfo && !quizelo.userInfo.canQuiz ? "You've reached your daily quiz limit" : "Start a new quiz"}
         >
