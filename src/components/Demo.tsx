@@ -1276,7 +1276,7 @@ const QuizeloApp = () => {
       )}
 
       {/* Game Stats */}
-      {isConnected && quizelo.userInfo && (
+      {isConnected && (
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-xl border border-white/50 hover:shadow-2xl transition-all group transform hover:scale-105">
             <div className="flex items-center space-x-3 mb-3">
@@ -1286,8 +1286,13 @@ const QuizeloApp = () => {
               <span className="text-xs sm:text-sm font-bold text-slate-600">🏆 Today&apos;s Quests</span>
             </div>
             <p className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">
-              {quizelo.userInfo.dailyCount}/{quizelo.maxDailyQuizzes}
+              {quizelo.userInfo?.dailyCount ?? 0}/{quizelo.maxDailyQuizzes ?? 3}
             </p>
+            {isMiniApp && !quizelo.userInfo && quizelo.isLoading && (
+              <div className="mt-2 flex items-center justify-center">
+                <LoadingSpinner size={4} color="text-orange-500" />
+              </div>
+            )}
           </div>
           
           <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-xl border border-white/50 hover:shadow-2xl transition-all group transform hover:scale-105">
@@ -1298,10 +1303,19 @@ const QuizeloApp = () => {
               <span className="text-xs sm:text-sm font-bold text-slate-600">⏰ Next Quest</span>
             </div>
             <p className="text-lg sm:text-xl font-black bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
-              {quizelo.timeUntilNextQuiz > 0 
-                ? `${Math.floor(quizelo.timeUntilNextQuiz / 60)}:${(quizelo.timeUntilNextQuiz % 60).toString().padStart(2, '0')}`
-                : 'Ready! 🚀'
-              }
+              {quizelo.userInfo ? (
+                quizelo.timeUntilNextQuiz > 0 
+                  ? `${Math.floor(quizelo.timeUntilNextQuiz / 60)}:${(quizelo.timeUntilNextQuiz % 60).toString().padStart(2, '0')}`
+                  : 'Ready! 🚀'
+              ) : (
+                isMiniApp && quizelo.isLoading ? (
+                  <div className="flex items-center justify-center">
+                    <LoadingSpinner size={4} color="text-blue-500" />
+                  </div>
+                ) : (
+                  'Loading...'
+                )
+              )}
             </p>
           </div>
         </div>
@@ -1460,20 +1474,42 @@ const QuizeloApp = () => {
               <div className="space-y-4">
                 <div className="flex justify-between items-center p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200 shadow-lg">
                   <span className="text-slate-600 font-bold text-sm sm:text-base">🎯 Today&apos;s quests</span>
-                  <span className="font-black text-slate-800 text-sm sm:text-base">{quizelo.userInfo.dailyCount}/{quizelo.maxDailyQuizzes}</span>
+                  <span className="font-black text-slate-800 text-sm sm:text-base">
+                    {quizelo.userInfo?.dailyCount ?? 0}/{quizelo.maxDailyQuizzes ?? 3}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-200 shadow-lg">
                   <span className="text-slate-600 font-bold text-sm sm:text-base">🏆 Won today</span>
-                  <span className={`font-black text-sm sm:text-base ${quizelo.userInfo.wonToday ? 'text-green-600' : 'text-slate-500'}`}>
-                    {quizelo.userInfo.wonToday ? '✨ Yes!' : '⏳ Not yet'}
+                  <span className={`font-black text-sm sm:text-base ${quizelo.userInfo?.wonToday ? 'text-green-600' : 'text-slate-500'}`}>
+                    {quizelo.userInfo?.wonToday ? '✨ Yes!' : '⏳ Not yet'}
                   </span>
                 </div>
                 <div className="flex justify-between items-center p-4 bg-gradient-to-r from-pink-50 to-purple-50 rounded-xl border border-pink-200 shadow-lg">
                   <span className="text-slate-600 font-bold text-sm sm:text-base">⚡ Ready to play</span>
-                  <span className={`font-black text-sm sm:text-base ${quizelo.userInfo.canQuiz ? 'text-green-600' : 'text-red-500'}`}>
-                    {quizelo.userInfo.canQuiz ? '🟢 Ready!' : '🔴 Wait'}
+                  <span className={`font-black text-sm sm:text-base ${quizelo.userInfo?.canQuiz ? 'text-green-600' : 'text-red-500'}`}>
+                    {quizelo.userInfo?.canQuiz ? '🟢 Ready!' : '🔴 Wait'}
                   </span>
                 </div>
+                
+                {/* Farcaster-specific stats */}
+                {isMiniApp && isInFarcaster && context?.user?.fid && (
+                  <div className="flex justify-between items-center p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-200 shadow-lg">
+                    <span className="text-slate-600 font-bold text-sm sm:text-base">🎭 Farcaster FID</span>
+                    <span className="font-black text-slate-800 text-sm sm:text-base">
+                      #{context.user.fid}
+                    </span>
+                  </div>
+                )}
+                
+                {/* Loading indicator for mini app */}
+                {isMiniApp && !quizelo.userInfo && quizelo.isLoading && (
+                  <div className="flex items-center justify-center p-4 bg-gradient-to-r from-slate-50 to-gray-50 rounded-xl border border-slate-200">
+                    <div className="flex items-center space-x-3">
+                      <LoadingSpinner size={5} color="text-slate-500" />
+                      <span className="text-slate-600 font-bold text-sm">Loading player data...</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1596,6 +1632,41 @@ const QuizeloApp = () => {
       </div>
     );
   }
+  
+  // Add retry mechanism for mini app data loading
+  useEffect(() => {
+    if (isMiniApp && isConnected && !quizelo.userInfo && !quizelo.isLoading) {
+      const retryLoadData = async () => {
+        const delays = [1000, 2000, 4000]; // Progressive delays
+        for (const delay of delays) {
+          await new Promise(resolve => setTimeout(resolve, delay));
+          try {
+            await quizelo.refetchUserInfo();
+            if (quizelo.userInfo) break; // Success, stop retrying
+          } catch (error) {
+            console.log(`Retry attempt failed after ${delay}ms:`, error);
+          }
+        }
+      };
+      
+      retryLoadData();
+    }
+  }, [isMiniApp, isConnected, quizelo.userInfo, quizelo.isLoading, quizelo.refetchUserInfo]);
+
+  // Add debugging for mini app environments
+  useEffect(() => {
+    if (isMiniApp) {
+      console.log('Debug mini app stats display:', {
+        isMiniApp,
+        isConnected,
+        hasUserInfo: !!quizelo.userInfo,
+        isLoading: quizelo.isLoading,
+        userInfo: quizelo.userInfo,
+        maxDailyQuizzes: quizelo.maxDailyQuizzes,
+        timeUntilNextQuiz: quizelo.timeUntilNextQuiz
+      });
+    }
+  }, [isMiniApp, isConnected, quizelo.userInfo, quizelo.isLoading, quizelo.maxDailyQuizzes, quizelo.timeUntilNextQuiz]);
   
   return (
     <div 
