@@ -21,8 +21,11 @@ import {
   Target,
 } from 'lucide-react';
 import { celo } from 'viem/chains';
-import { useSwitchChain, useChainId } from 'wagmi';
+import { useSwitchChain, useChainId, useAccount, useConnect } from 'wagmi';
+import { injected } from 'wagmi/connectors';
 import { sdk } from '@farcaster/frame-sdk';
+import type { Context } from '@farcaster/frame-sdk';
+import { ConnectButton } from "@rainbow-me/rainbowkit";
 
 // Import your hooks
 import { useQuizelo } from '../hooks/useQuizelo';
@@ -544,6 +547,8 @@ const QuizeloApp = () => {
   const [currentQuestionResult, setCurrentQuestionResult] = useState<QuestionResult | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
   const [showQuizInfo, setShowQuizInfo] = useState(false);
+  const [context, setContext] = useState<Context.FrameContext>();
+  const [isSDKLoaded, setIsSDKLoaded] = useState(false);
 
   // Your hooks
   const quizelo = useQuizelo();
@@ -551,6 +556,11 @@ const QuizeloApp = () => {
   const { generateQuestions, loading: aiLoading, error: aiError, questions, markAnswer, calculateScore } = useAI();
   const { switchChain } = useSwitchChain();
   const chainId = useChainId();
+  const { address, isConnected } = useAccount();
+  const { connect } = useConnect();
+
+  // Detect if we're in Farcaster
+  const isInFarcaster = context?.client?.clientFid !== undefined;
 
   const handleAnswer = useCallback((answerIndex: number) => {
     if (isAnswered) return; // Prevent multiple answers
@@ -591,12 +601,24 @@ const QuizeloApp = () => {
     return () => clearInterval(timer);
   }, [isInQuiz, showResults, showQuestionResult, isAnswered, timeLeft, currentQuestionIndex, handleAnswer]);
 
-  // Check wallet connection on mount
+  // Check wallet connection on mount and handle disconnection
   useEffect(() => {
-    if (!quizelo.isConnected) {
+    // Check if wallet is already connected
+    if (address && !quizelo.isConnected) {
+      // Wallet is connected but quizelo hook hasn't detected it yet
+      // This will be handled by the quizelo hook's own useEffect
+      console.log('Wallet detected:', address);
+    } else if (!address && !quizelo.isConnected) {
+      // No wallet connected, show connect modal
+      setShowConnectWallet(true);
+    } else if (address && quizelo.isConnected) {
+      // Wallet is connected and quizelo hook has detected it
+      setShowConnectWallet(false);
+    } else if (!address && quizelo.isConnected) {
+      // Wallet was disconnected
       setShowConnectWallet(true);
     }
-  }, [quizelo.isConnected]);
+  }, [address, quizelo.isConnected]);
 
   const switchToCelo = useCallback(async () => {
     try {
@@ -614,20 +636,20 @@ const QuizeloApp = () => {
 
   // Check network on connection
   useEffect(() => {
-    if (quizelo.isConnected && chainId !== celo.id) {
+    if (isConnected && chainId !== celo.id) {
       setShowNetworkModal(true);
       // Auto-attempt to switch
       switchToCelo();
-    } else if (quizelo.isConnected && chainId === celo.id) {
+    } else if (isConnected && chainId === celo.id) {
       setShowNetworkModal(false);
     }
-  }, [quizelo.isConnected, chainId, switchToCelo]);
+  }, [isConnected, chainId, switchToCelo]);
 
   const handleTopicSelect = async (topic: TopicWithMetadata) => {
     selectTopic(topic);
     setShowTopicModal(false);
     
-    if (!quizelo.isConnected) {
+    if (!isConnected) {
       setShowConnectWallet(true);
       return;
     }
@@ -1011,7 +1033,10 @@ const QuizeloApp = () => {
           </p>
           
           <button
-            onClick={() => setShowConnectWallet(false)}
+            onClick={() => {
+              connect({ connector: injected() });
+              setShowConnectWallet(false);
+            }}
             className="w-full bg-gradient-to-r from-purple-400 via-pink-500 to-blue-500 text-white py-3 sm:py-4 rounded-2xl font-bold hover:shadow-2xl transition-all transform hover:scale-105 mb-4"
           >
             🚀 Connect Wallet
@@ -1097,14 +1122,16 @@ const QuizeloApp = () => {
             🎮 Level up your Celo knowledge and earn epic CELO rewards! Join thousands of crypto warriors on the ultimate blockchain adventure! ⚔️💰
           </p>
           
-          {quizelo.isConnected && (
+          {isConnected ? (
             <div className="bg-white/20 rounded-2xl p-4 backdrop-blur-sm border border-white/30 shadow-lg">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   <Wallet className="w-5 h-5 text-purple-100" />
                   <div>
-                    <p className="text-purple-100 text-sm font-bold">🎯 Player Connected</p>
-                    <p className="font-mono text-white text-sm">{formatAddress(quizelo.address)}</p>
+                    <p className="text-purple-100 text-sm font-bold">
+                      {isInFarcaster ? '🎮 Farcaster Player' : '🎯 Player Connected'}
+                    </p>
+                    <p className="font-mono text-white text-sm">{formatAddress(address)}</p>
                   </div>
                 </div>
                 <button
@@ -1125,12 +1152,30 @@ const QuizeloApp = () => {
                 </button>
               </div>
             </div>
+          ) : (
+            <div className="bg-white/20 rounded-2xl p-4 backdrop-blur-sm border border-white/30 shadow-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <Wallet className="w-5 h-5 text-purple-100" />
+                  <div>
+                    <p className="text-purple-100 text-sm font-bold">🔌 Wallet Not Connected</p>
+                    <p className="text-purple-100 text-xs">Connect to start playing!</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowConnectWallet(true)}
+                  className="flex items-center space-x-2 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-xl transition-all transform hover:scale-105"
+                >
+                  <span className="text-white text-sm font-medium">🔗 Connect</span>
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </div>
   
       {/* Game Stats */}
-      {quizelo.isConnected && quizelo.userInfo && (
+      {isConnected && quizelo.userInfo && (
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-xl border border-white/50 hover:shadow-2xl transition-all group transform hover:scale-105">
             <div className="flex items-center space-x-3 mb-3">
@@ -1287,7 +1332,7 @@ const QuizeloApp = () => {
         </div>
       </div>
   
-      {quizelo.isConnected ? (
+      {isConnected ? (
         <div className="space-y-6">
           <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 sm:p-8 shadow-xl border border-white/50 hover:shadow-2xl transition-all">
             <div className="text-center">
@@ -1297,11 +1342,11 @@ const QuizeloApp = () => {
               <h3 className="font-black text-slate-800 text-xl sm:text-2xl mb-4">🎮 Connected Player</h3>
               <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200 shadow-lg">
                 <p className="text-slate-600 text-sm font-bold mb-1">🔗 Wallet Address</p>
-                <p className="font-mono text-slate-800 font-bold text-sm sm:text-base">{formatAddress(quizelo.address)}</p>
+                <p className="font-mono text-slate-800 font-bold text-sm sm:text-base">{formatAddress(address)}</p>
               </div>
             </div>
           </div>
-  
+
           {quizelo.userInfo && (
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-xl border border-white/50 hover:shadow-2xl transition-all">
               <h4 className="font-black text-slate-800 text-base sm:text-lg mb-4 flex items-center space-x-2">
@@ -1337,10 +1382,13 @@ const QuizeloApp = () => {
           <h3 className="font-black text-slate-800 text-xl sm:text-2xl mb-4">🔌 No Player Connected</h3>
           <p className="text-slate-600 mb-8 text-sm sm:text-base">Connect your wallet to join the adventure and start earning epic rewards! 🎮</p>
           <button
-            onClick={() => setShowConnectWallet(true)}
-            className="px-8 py-4 bg-gradient-to-r from-purple-400 via-pink-500 to-blue-500 text-white rounded-xl font-bold hover:shadow-2xl transition-all transform hover:scale-105"
+            onClick={() => {
+              connect({ connector: injected() });
+              setShowConnectWallet(false);
+            }}
+            className="w-full bg-gradient-to-r from-purple-400 via-pink-500 to-blue-500 text-white py-3 sm:py-4 rounded-2xl font-bold hover:shadow-2xl transition-all transform hover:scale-105 mb-4"
           >
-            🚀 Connect & Play
+            🚀 Connect Wallet
           </button>
         </div>
       )}
@@ -1369,6 +1417,46 @@ const QuizeloApp = () => {
 
     initializeApp();
   }, [quizelo]);
+  
+  // Auto-connect with injected wallet in Farcaster
+  useEffect(() => {
+    if (isInFarcaster && !isConnected) {
+      // Auto-connect using injected wallet
+      connect({ connector: injected() });
+    }
+  }, [isInFarcaster, isConnected, connect]);
+
+  // Auto-hide connect wallet modal in Farcaster
+  useEffect(() => {
+    if (!isInFarcaster && !isConnected) {
+      setShowConnectWallet(true);
+    } else {
+      setShowConnectWallet(false);
+    }
+  }, [isConnected, isInFarcaster]);
+
+  // SDK initialization with ready call
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const frameContext = await sdk.context;
+        setContext(frameContext);
+        
+        // Call ready immediately to dismiss Farcaster's loading
+        await sdk.actions.ready();
+        
+        setIsSDKLoaded(true);
+      } catch (error) {
+        console.error('Error loading SDK:', error);
+        await sdk.actions.ready();
+        setIsSDKLoaded(true);
+      }
+    };
+    
+    if (sdk && !isSDKLoaded) {
+      load();
+    }
+  }, [isSDKLoaded]);
   
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-100 via-pink-100 to-blue-100">
