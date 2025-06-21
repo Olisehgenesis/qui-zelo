@@ -4662,45 +4662,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"frames-v2-demo@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "frames-v2-demo@workspace:."
-  dependencies:
-    "@farcaster/auth-kit": ^0.6.0
-    "@farcaster/frame-core": ^0.0.22
-    "@farcaster/frame-node": ^0.0.7
-    "@farcaster/frame-sdk": ^0.0.26
-    "@farcaster/frame-wagmi-connector": ^0.0.6
-    "@neynar/nodejs-sdk": ^2.13.1
-    "@radix-ui/react-label": ^2.1.1
-    "@rainbow-me/rainbowkit": ^2.2.4
-    "@tanstack/react-query": ^5.61.0
-    "@types/node": ^20
-    "@types/react": ^18
-    "@types/react-dom": ^18
-    "@upstash/redis": ^1.34.3
-    class-variance-authority: ^0.7.1
-    clsx: ^2.1.1
-    eslint: ^8
-    eslint-config-next: 15.0.3
-    lucide-react: ^0.469.0
-    next: 15.0.3
-    next-auth: ^4.24.11
-    openai: ^5.6.0
-    ox: ^0.4.2
-    pino-pretty: ^13.0.0
-    postcss: ^8
-    react: 18
-    react-dom: 18
-    tailwind-merge: ^2.6.0
-    tailwindcss: ^3.4.1
-    tailwindcss-animate: ^1.0.7
-    typescript: ^5
-    viem: ^2.21.55
-    wagmi: ^2.14.3
-  languageName: unknown
-  linkType: soft
-
 "fs-extra@npm:10.1.0":
   version: 10.1.0
   resolution: "fs-extra@npm:10.1.0"
@@ -7497,6 +7458,45 @@ __metadata:
   checksum: 7bc32b99354a1aa46c089d2a82b63489961002bb1d654cee3e6d2d8778197b68c2d854fd23d8422436ee1fdfd0abaddc4d4da120afe700ade68bd357815b26fd
   languageName: node
   linkType: hard
+
+"quizelo@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "quizelo@workspace:."
+  dependencies:
+    "@farcaster/auth-kit": ^0.6.0
+    "@farcaster/frame-core": ^0.0.22
+    "@farcaster/frame-node": ^0.0.7
+    "@farcaster/frame-sdk": ^0.0.26
+    "@farcaster/frame-wagmi-connector": ^0.0.6
+    "@neynar/nodejs-sdk": ^2.13.1
+    "@radix-ui/react-label": ^2.1.1
+    "@rainbow-me/rainbowkit": ^2.2.4
+    "@tanstack/react-query": ^5.61.0
+    "@types/node": ^20
+    "@types/react": ^18
+    "@types/react-dom": ^18
+    "@upstash/redis": ^1.34.3
+    class-variance-authority: ^0.7.1
+    clsx: ^2.1.1
+    eslint: ^8
+    eslint-config-next: 15.0.3
+    lucide-react: ^0.469.0
+    next: 15.0.3
+    next-auth: ^4.24.11
+    openai: ^5.6.0
+    ox: ^0.4.2
+    pino-pretty: ^13.0.0
+    postcss: ^8
+    react: 18
+    react-dom: 18
+    tailwind-merge: ^2.6.0
+    tailwindcss: ^3.4.1
+    tailwindcss-animate: ^1.0.7
+    typescript: ^5
+    viem: ^2.21.55
+    wagmi: ^2.14.3
+  languageName: unknown
+  linkType: soft
 
 "radix3@npm:^1.1.2":
   version: 1.1.2

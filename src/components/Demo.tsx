@@ -1031,7 +1031,7 @@ const QuizeloApp = () => {
   // Enhanced Topic Selection Modal
   const TopicModal = () => (
     <div className="fixed inset-0 bg-gradient-to-br from-purple-900/20 via-blue-900/20 to-pink-900/20 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4">
-      <div className="bg-white/90 backdrop-blur-sm rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[80vh] overflow-y-auto border-2 border-purple-200 shadow-2xl">
+      <div className="bg-white/90 backdrop-blur-sm rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[80vh] overflow-y-auto border-2 border-purple-200 shadow-2xl scrollbar-thin scrollbar-thumb-purple-300 scrollbar-track-purple-100">
         <div className="sticky top-0 bg-white/95 backdrop-blur-sm border-b border-purple-100 p-4 sm:p-6 flex items-center justify-between">
           <h3 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 bg-clip-text text-transparent">
             🎯 Choose Your Quest
@@ -1391,8 +1391,9 @@ const QuizeloApp = () => {
       {!isInQuiz && !showResults && (
         <button
           onClick={() => setShowTopicModal(true)}
-          disabled={quizelo.isLoading || aiLoading || !quizelo.userInfo?.canQuiz}
-          className="fixed bottom-20 sm:bottom-24 right-4 sm:right-6 w-16 h-16 sm:w-18 sm:h-18 bg-gradient-to-r from-pink-400 via-purple-500 to-blue-500 rounded-full shadow-2xl flex items-center justify-center hover:shadow-pink-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed z-10 transform hover:scale-110 active:scale-95 animate-pulse"
+          disabled={quizelo.isLoading || aiLoading || (quizelo.userInfo && !quizelo.userInfo.canQuiz)}
+          className="fixed bottom-32 sm:bottom-36 right-4 sm:right-6 w-16 h-16 sm:w-18 sm:h-18 bg-gradient-to-r from-pink-400 via-purple-500 to-blue-500 rounded-full shadow-2xl flex items-center justify-center hover:shadow-pink-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed z-10 transform hover:scale-110 active:scale-95 animate-pulse border-4 border-white/80"
+          title={quizelo.userInfo && !quizelo.userInfo.canQuiz ? "You've reached your daily quiz limit" : "Start a new quiz"}
         >
           {quizelo.isLoading || aiLoading ? (
             <LoadingSpinner size={7} color="text-white" />
