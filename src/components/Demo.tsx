@@ -1,4 +1,4 @@
-import  { useState, useEffect } from 'react';
+import  { useState, useEffect, useCallback } from 'react';
 import { 
   Home, 
   Trophy, 
@@ -26,7 +26,7 @@ import { sdk } from '@farcaster/frame-sdk';
 
 // Import your hooks
 import { useQuizelo } from '../hooks/useQuizelo';
-import { useTopics } from '../hooks/useTopics';
+import { useTopics, TopicWithMetadata } from '../hooks/useTopics';
 import { useAI } from '../hooks/useAI';
 
 interface ScoreResult {
@@ -34,6 +34,41 @@ interface ScoreResult {
   correct: number;
   total: number;
 }
+
+interface QuestionResult {
+  isCorrect: boolean;
+  explanation: string;
+  correctAnswer: string;
+  userAnswer: string;
+  isLastQuestion: boolean;
+}
+
+// interface QuizeloContract {
+//   isConnected: boolean;
+//   address?: `0x${string}`;
+//   isLoading: boolean;
+//   error?: string;
+//   success?: string;
+//   txHash?: string;
+//   userInfo?: {
+//     dailyCount: number;
+//     wonToday: boolean;
+//     canQuiz: boolean;
+//   };
+//   contractStats?: {
+//     operational: boolean;
+//     balance: bigint;
+//   };
+//   quizFee?: bigint;
+//   maxDailyQuizzes: number;
+//   timeUntilNextQuiz: number;
+//   formatEther: (value: bigint) => string;
+//   startQuiz: () => Promise<{ success: boolean; sessionId?: string }>;
+//   claimReward: (sessionId: string, percentage: number) => Promise<void>;
+//   refetchUserInfo: () => Promise<void>;
+//   refetchContractStats: () => Promise<void>;
+//   refetchActiveQuizTakers: () => Promise<void>;
+// }
 
 // Loading Animation Component with sparkles
 const LoadingSpinner = ({ size = 6, color = 'text-white' }) => (
@@ -96,7 +131,7 @@ const HorizontalTimer = ({ timeLeft, totalTime = 15, onTimeUp }: { timeLeft: num
 
 // Question Result Component
 const QuestionResult = ({ result, correctAnswer, userAnswer, onContinue, isLastQuestion }: { 
-  result: any, 
+  result: QuestionResult, 
   correctAnswer: string, 
   userAnswer: string, 
   onContinue: () => void,
@@ -264,7 +299,7 @@ const QuizInfoModal = ({
 };
 
 // Enhanced Quiz Generation Modal with game-like animations
-const QuizGenerationModal = ({ isVisible , topic, onClose }: { isVisible: boolean, topic: any, onClose: () => void }) => {
+const QuizGenerationModal = ({ isVisible , topic, onClose }: { isVisible: boolean, topic: TopicWithMetadata | null, onClose: () => void }) => {
   if (!isVisible) return null;
   console.log("onclose", onClose);
   
@@ -313,12 +348,11 @@ const QuizGenerationModal = ({ isVisible , topic, onClose }: { isVisible: boolea
 };
 
 // Enhanced Transaction Modal with celebration vibes
-const TransactionModal = ({ isVisible, status, txHash, onClose, quizelo }: { 
+const TransactionModal = ({ isVisible, status, txHash, onClose }: { 
   isVisible: boolean, 
   status: string, 
   txHash: string, 
-  onClose: () => void,
-  quizelo: any 
+  onClose: () => void
 }) => {
   if (!isVisible) return null;
   
@@ -507,7 +541,7 @@ const QuizeloApp = () => {
   const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
   const [networkError, setNetworkError] = useState('');
   const [showQuestionResult, setShowQuestionResult] = useState(false);
-  const [currentQuestionResult, setCurrentQuestionResult] = useState<any>(null);
+  const [currentQuestionResult, setCurrentQuestionResult] = useState<QuestionResult | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
   const [showQuizInfo, setShowQuizInfo] = useState(false);
 
@@ -517,6 +551,28 @@ const QuizeloApp = () => {
   const { generateQuestions, loading: aiLoading, error: aiError, questions, markAnswer, calculateScore } = useAI();
   const { switchChain } = useSwitchChain();
   const chainId = useChainId();
+
+  const handleAnswer = useCallback((answerIndex: number) => {
+    if (isAnswered) return; // Prevent multiple answers
+    
+    setIsAnswered(true);
+    const newAnswers = [...userAnswers, answerIndex];
+    setUserAnswers(newAnswers);
+    
+    // Get result for this question
+    const result = markAnswer(currentQuestionIndex, answerIndex);
+    const correctAnswer = questions[currentQuestionIndex].options[questions[currentQuestionIndex].correctAnswer];
+    const userAnswer = answerIndex >= 0 ? questions[currentQuestionIndex].options[answerIndex] : 'No answer';
+    
+    setCurrentQuestionResult({
+      ...(result as unknown as QuestionResult),
+      correctAnswer,
+      userAnswer,
+      isLastQuestion: currentQuestionIndex === questions.length - 1
+    });
+    
+    setShowQuestionResult(true);
+  }, [isAnswered, userAnswers, currentQuestionIndex, questions, markAnswer]);
 
   // Timer effect for quiz questions
   useEffect(() => {
@@ -533,7 +589,7 @@ const QuizeloApp = () => {
       }, 1000);
     }
     return () => clearInterval(timer);
-  }, [isInQuiz, showResults, showQuestionResult, isAnswered, timeLeft, currentQuestionIndex]);
+  }, [isInQuiz, showResults, showQuestionResult, isAnswered, timeLeft, currentQuestionIndex, handleAnswer]);
 
   // Check wallet connection on mount
   useEffect(() => {
@@ -542,18 +598,7 @@ const QuizeloApp = () => {
     }
   }, [quizelo.isConnected]);
 
-  // Check network on connection
-  useEffect(() => {
-    if (quizelo.isConnected && chainId !== celo.id) {
-      setShowNetworkModal(true);
-      // Auto-attempt to switch
-      switchToCelo();
-    } else if (quizelo.isConnected && chainId === celo.id) {
-      setShowNetworkModal(false);
-    }
-  }, [quizelo.isConnected, chainId]);
-
-  const switchToCelo = async () => {
+  const switchToCelo = useCallback(async () => {
     try {
       setIsSwitchingNetwork(true);
       setNetworkError('');
@@ -565,9 +610,20 @@ const QuizeloApp = () => {
     } finally {
       setIsSwitchingNetwork(false);
     }
-  };
+  }, [switchChain]);
 
-  const handleTopicSelect = async (topic: any) => {
+  // Check network on connection
+  useEffect(() => {
+    if (quizelo.isConnected && chainId !== celo.id) {
+      setShowNetworkModal(true);
+      // Auto-attempt to switch
+      switchToCelo();
+    } else if (quizelo.isConnected && chainId === celo.id) {
+      setShowNetworkModal(false);
+    }
+  }, [quizelo.isConnected, chainId, switchToCelo]);
+
+  const handleTopicSelect = async (topic: TopicWithMetadata) => {
     selectTopic(topic);
     setShowTopicModal(false);
     
@@ -639,28 +695,6 @@ const QuizeloApp = () => {
       console.error('Failed to start quiz:', error);
       setTransactionStatus('error');
     }
-  };
-
-  const handleAnswer = (answerIndex: number) => {
-    if (isAnswered) return; // Prevent multiple answers
-    
-    setIsAnswered(true);
-    const newAnswers = [...userAnswers, answerIndex];
-    setUserAnswers(newAnswers);
-    
-    // Get result for this question
-    const result = markAnswer(currentQuestionIndex, answerIndex);
-    const correctAnswer = questions[currentQuestionIndex].options[questions[currentQuestionIndex].correctAnswer];
-    const userAnswer = answerIndex >= 0 ? questions[currentQuestionIndex].options[answerIndex] : 'No answer';
-    
-    setCurrentQuestionResult({
-      ...result,
-      correctAnswer,
-      userAnswer,
-      isLastQuestion: currentQuestionIndex === questions.length - 1
-    });
-    
-    setShowQuestionResult(true);
   };
 
   const handleContinueToNext = () => {
@@ -1103,7 +1137,7 @@ const QuizeloApp = () => {
               <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-yellow-400 via-orange-500 to-red-500 rounded-xl flex items-center justify-center group-hover:animate-bounce shadow-lg">
                 <Trophy className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
               </div>
-              <span className="text-xs sm:text-sm font-bold text-slate-600">🏆 Today's Quests</span>
+              <span className="text-xs sm:text-sm font-bold text-slate-600">🏆 Today&apos;s Quests</span>
             </div>
             <p className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">
               {quizelo.userInfo.dailyCount}/{quizelo.maxDailyQuizzes}
@@ -1276,7 +1310,7 @@ const QuizeloApp = () => {
               </h4>
               <div className="space-y-4">
                 <div className="flex justify-between items-center p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200 shadow-lg">
-                  <span className="text-slate-600 font-bold text-sm sm:text-base">🎯 Today's quests</span>
+                  <span className="text-slate-600 font-bold text-sm sm:text-base">🎯 Today&apos;s quests</span>
                   <span className="font-black text-slate-800 text-sm sm:text-base">{quizelo.userInfo.dailyCount}/{quizelo.maxDailyQuizzes}</span>
                 </div>
                 <div className="flex justify-between items-center p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-200 shadow-lg">
@@ -1334,7 +1368,7 @@ const QuizeloApp = () => {
     };
 
     initializeApp();
-  }, []);
+  }, [quizelo]);
   
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-100 via-pink-100 to-blue-100">
@@ -1424,7 +1458,6 @@ const QuizeloApp = () => {
         status={transactionStatus}
         txHash={currentTxHash}
         onClose={() => setShowTransactionModal(false)}
-        quizelo={quizelo}
       />
       {showNetworkModal && <NetworkCheckModal 
         showNetworkModal={showNetworkModal}

@@ -92,6 +92,7 @@ export const useAI = () => {
         parsedQuestions = JSON.parse(cleanedText);
       } catch (parseError) {
         // Try to extract JSON from the response
+        console.log(parseError)
         const jsonMatch = questionsText.match(/\[[\s\S]*\]/);
         if (jsonMatch) {
           parsedQuestions = JSON.parse(jsonMatch[0]);

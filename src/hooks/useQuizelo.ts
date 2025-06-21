@@ -61,9 +61,9 @@ const useContractTransaction = () => {
     onError
   }: {
     functionName: string;
-    args?: any[];
+    args?: unknown[];
     value?: bigint;
-    onSuccess?: (txHash: string, receipt?: any) => void;
+    onSuccess?: (txHash: string, receipt?: unknown) => void;
     onError?: (error: Error) => void;
   }) => {
     try {
@@ -203,15 +203,16 @@ export const useQuizelo = () => {
   }, []);
 
   // Extract sessionId from transaction receipt
-  const extractSessionIdFromReceipt = (receipt: any): string | null => {
+  const extractSessionIdFromReceipt = (receipt: unknown): string | null => {
     try {
-      if (!receipt?.logs) return null;
+      const typedReceipt = receipt as { logs?: Array<{ topics?: string[]; address?: string }> };
+      if (!typedReceipt?.logs) return null;
 
       // Find QuizStarted event
-      for (const log of receipt.logs) {
+      for (const log of typedReceipt.logs) {
         if (log.topics && log.topics.length >= 2) {
           // Check if this is from our contract
-          if (log.address.toLowerCase() === QUIZELO_CONTRACT_ADDRESS.toLowerCase()) {
+          if (log.address?.toLowerCase() === QUIZELO_CONTRACT_ADDRESS.toLowerCase()) {
             // The sessionId is typically in the first indexed parameter (topics[1])
             const sessionId = log.topics[1];
             if (sessionId && sessionId !== '0x0000000000000000000000000000000000000000000000000000000000000000') {
@@ -246,7 +247,7 @@ export const useQuizelo = () => {
       try {
         await switchChain({ chainId: targetChainId });
         await new Promise(resolve => setTimeout(resolve, 1000));
-      } catch (error) {
+      } catch {
         showError('Please switch to the correct network first');
         return { success: false, sessionId: null };
       }
@@ -300,7 +301,7 @@ export const useQuizelo = () => {
       try {
         await switchChain({ chainId: targetChainId });
         await new Promise(resolve => setTimeout(resolve, 1000));
-      } catch (error) {
+      } catch {
         showError('Please switch to the correct network first');
         return;
       }
@@ -320,33 +321,35 @@ export const useQuizelo = () => {
             args: [sessionId]
           });
 
+          const typedSession = session as [string, bigint, bigint, boolean, boolean, bigint];
+
           console.log('📝 Validating session before claim:', {
             sessionId,
-            user: (session as any)[0],
-            startTime: (session as any)[1],
-            expiryTime: (session as any)[2],
-            active: (session as any)[3],
-            claimed: (session as any)[4],
-            timeRemaining: (session as any)[5]
+            user: typedSession[0],
+            startTime: typedSession[1],
+            expiryTime: typedSession[2],
+            active: typedSession[3],
+            claimed: typedSession[4],
+            timeRemaining: typedSession[5]
           });
 
-          if (!(session as any)[3]) { // active
+          if (!typedSession[3]) { // active
             showError('This quiz session is no longer active');
             return;
           }
 
-          if ((session as any)[4]) { // claimed
+          if (typedSession[4]) { // claimed
             showError('This quiz has already been claimed');
             return;
           }
 
-          if ((session as any)[0].toLowerCase() !== address.toLowerCase()) {
+          if (typedSession[0].toLowerCase() !== address.toLowerCase()) {
             showError('This quiz session belongs to a different user');
             return;
           }
 
           const now = Math.floor(Date.now() / 1000);
-          if (Number((session as any)[2]) < now) { // expiryTime
+          if (Number(typedSession[2]) < now) { // expiryTime
             showError('This quiz session has expired');
             return;
           }
@@ -555,7 +558,7 @@ export const useQuizelo = () => {
     try {
       await switchChain({ chainId: targetChainId });
       showSuccess(`🌐 Switched to ${env === 'dev' ? 'Alfajores' : 'Celo'} network!`);
-    } catch (error) {
+    } catch {
       showError(`Failed to switch to ${env === 'dev' ? 'Alfajores' : 'Celo'} network`);
     }
   };

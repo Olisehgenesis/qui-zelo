@@ -11,7 +11,8 @@ declare module "next-auth" {
 }
 
 export const authOptions: AuthOptions = {
-    // Configure one or more authentication providers
+  secret: process.env.NEXTAUTH_SECRET || "fallback-secret-for-development-only",
+  // Configure one or more authentication providers
   providers: [
     CredentialsProvider({
       name: "Sign in with Farcaster",
