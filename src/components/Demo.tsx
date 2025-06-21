@@ -1351,15 +1351,15 @@ const QuizeloApp = () => {
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        // Wait for initial data to load
+        // Call ready immediately to dismiss splash screen
+        await sdk.actions.ready();
+        
+        // Then load initial data in the background
         await Promise.all([
           quizelo.refetchUserInfo(),
           quizelo.refetchContractStats(),
           quizelo.refetchActiveQuizTakers()
         ]);
-        
-        // Call ready to dismiss splash screen
-        await sdk.actions.ready();
       } catch (error) {
         console.error('Error initializing app:', error);
         // Still call ready even if there's an error to avoid blank screen
