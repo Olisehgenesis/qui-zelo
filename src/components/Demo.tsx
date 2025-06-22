@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Home, 
@@ -109,13 +109,6 @@ const LoadingSpinner = ({ size = 6, color = 'text-amber-600' }) => (
 // Enhanced Horizontal Timer with cooler effects
 const HorizontalTimer = ({ timeLeft, totalTime = 15, onTimeUp, isTimeUp }: { timeLeft: number, totalTime?: number, onTimeUp: () => void, isTimeUp: boolean }) => {
   const progress = (timeLeft / totalTime) * 100;
-  
-  // Call onTimeUp when timeLeft reaches 0 and isTimeUp is true
-  useEffect(() => {
-    if (timeLeft === 0 && isTimeUp) {
-      onTimeUp();
-    }
-  }, [timeLeft, isTimeUp, onTimeUp]);
   
   const getTimerColor = () => {
     if (timeLeft <= 3) return 'from-red-400 to-orange-500';
@@ -951,58 +944,70 @@ const QuizeloApp = () => {
  // Detect if we're in Farcaster
  const isInFarcaster = context?.client?.clientFid !== undefined;
 
- const handleAnswer = useCallback((answerIndex: number) => {
+ const handleAnswer = useMemo(() => (answerIndex: number) => {
    if (isAnswered || isTimeUp) return; // Prevent multiple answers
    
+   // Batch related state updates to prevent cascading effects
    setIsAnswered(true);
-   setIsTimeUp(false); // Reset time up flag
-   const newAnswers = [...userAnswers, answerIndex];
-   setUserAnswers(newAnswers);
+   
+   // Use setTimeout to batch the rest of the state updates
+   setTimeout(() => {
+     const newAnswers = [...userAnswers, answerIndex];
+     setUserAnswers(newAnswers);
 
-   
-   // Get result for this question
-   const result = markAnswer(currentQuestionIndex, answerIndex);
-   const correctAnswer = questions[currentQuestionIndex].options[questions[currentQuestionIndex].correctAnswer];
-   const userAnswer = answerIndex >= 0 ? questions[currentQuestionIndex].options[answerIndex] : 'No answer';
-   
-   setCurrentQuestionResult({
-     isCorrect: result?.isCorrect || false,
-     explanation: result?.explanation || '',
-     correctAnswer,
-     userAnswer,
-     isLastQuestion: currentQuestionIndex === questions.length - 1
-   });
-   
-   setShowQuestionResult(true);
+     // Get result for this question
+     const result = markAnswer(currentQuestionIndex, answerIndex);
+     const correctAnswer = questions[currentQuestionIndex].options[questions[currentQuestionIndex].correctAnswer];
+     const userAnswer = answerIndex >= 0 ? questions[currentQuestionIndex].options[answerIndex] : 'No answer';
+     
+     setCurrentQuestionResult({
+       isCorrect: result?.isCorrect || false,
+       explanation: result?.explanation || '',
+       correctAnswer,
+       userAnswer,
+       isLastQuestion: currentQuestionIndex === questions.length - 1
+     });
+     
+     setShowQuestionResult(true);
+   }, 0);
  }, [isAnswered, isTimeUp, userAnswers, currentQuestionIndex, questions, markAnswer]);
 
  // Timer effect for quiz questions
  useEffect(() => {
    let timer: NodeJS.Timeout | undefined;
+   
+   // Only start timer if quiz is active and question is not answered
    if (isInQuiz && !showResults && !showQuestionResult && !isAnswered && timeLeft > 0) {
      timer = setInterval(() => {
        setTimeLeft(prev => {
          if (prev <= 1) {
-           // Set time up flag and set timeLeft to 0
-           setIsTimeUp(true);
+           // Handle timeout directly here instead of triggering cascading effects
+           if (!isAnswered && !isTimeUp) {
+             // Use setTimeout to avoid state update conflicts
+             setTimeout(() => {
+               handleAnswer(-1);
+             }, 0);
+           }
            return 0;
          }
          return prev - 1;
        });
      }, 1000);
    }
+   
    return () => {
      if (timer) clearInterval(timer);
    };
- }, [isInQuiz, showResults, showQuestionResult, isAnswered, timeLeft]);
+ }, [isInQuiz, showResults, showQuestionResult, isAnswered, handleAnswer]);
 
  // Reset timer when question changes
  useEffect(() => {
-   if (isInQuiz && !showResults && !showQuestionResult) {
+   if (isInQuiz && !showResults) {
      setTimeLeft(15);
      setIsTimeUp(false);
+     setIsAnswered(false);
    }
- }, [currentQuestionIndex, isInQuiz, showResults, showQuestionResult]);
+ }, [currentQuestionIndex]); // Only depend on question index, not other frequently changing states
 
  // Check wallet connection on mount and handle disconnection
  useEffect(() => {
@@ -1020,11 +1025,21 @@ const QuizeloApp = () => {
    } else if (address && quizelo.isConnected) {
      // Wallet is connected and quizelo hook has detected it
      setShowConnectWallet(false);
+     
+     // In Farcaster, manually trigger data loading after connection
+     if (isMiniApp && isInFarcaster) {
+       console.log('Wallet connected in Farcaster, triggering data load...');
+       setTimeout(() => {
+         quizelo.refetchUserInfo();
+         quizelo.refetchContractStats();
+         quizelo.refetchActiveQuizTakers();
+       }, 1000); // Small delay to ensure connection is stable
+     }
    } else if (!address && quizelo.isConnected) {
      // Wallet was disconnected
      setShowConnectWallet(true);
    }
- }, [address, quizelo.isConnected, isMiniApp, isConnected, connect]);
+ }, [address, quizelo.isConnected, isMiniApp, isConnected, connect, isInFarcaster, quizelo]);
 
  const switchToCelo = useCallback(async () => {
    try {
@@ -1127,21 +1142,25 @@ const QuizeloApp = () => {
 
  const handleContinueToNext = () => {
    setShowQuestionResult(false);
-   setIsAnswered(false);
-   setIsTimeUp(false); // Reset time up flag
    
-   if (currentQuestionIndex < questions.length - 1) {
-     setCurrentQuestionIndex(currentQuestionIndex + 1);
-     setTimeLeft(15);
-   } else {
-     // Calculate final score and show results
-     const score = calculateScore(userAnswers);
-     setFinalScore(score);
-     setIsInQuiz(false);
-     setShowResults(true);
-   }
-   
-   setCurrentQuestionResult(null);
+   // Batch state updates to prevent cascading effects
+   setTimeout(() => {
+     setIsAnswered(false);
+     setIsTimeUp(false); // Reset time up flag
+     
+     if (currentQuestionIndex < questions.length - 1) {
+       setCurrentQuestionIndex(currentQuestionIndex + 1);
+       // Timer will be reset by the useEffect that depends on currentQuestionIndex
+     } else {
+       // Calculate final score and show results
+       const score = calculateScore(userAnswers);
+       setFinalScore(score);
+       setIsInQuiz(false);
+       setShowResults(true);
+     }
+     
+     setCurrentQuestionResult(null);
+   }, 0);
  };
 
  const handleClaimReward = async () => {
@@ -2021,6 +2040,16 @@ const QuizeloApp = () => {
                <LoadingSpinner size={3} color="text-orange-500" />
              </div>
            )}
+           {isMiniApp && !quizelo.userInfo && !quizelo.isLoading && (
+             <div className="mt-2 flex items-center justify-center">
+               <button 
+                 onClick={() => quizelo.refetchUserInfo()}
+                 className="text-xs text-orange-600 hover:text-orange-700 font-medium"
+               >
+                 🔄 Retry
+               </button>
+             </div>
+           )}
          </motion.div>
          
          <motion.div 
@@ -2052,6 +2081,16 @@ const QuizeloApp = () => {
                )
              )}
            </p>
+           {isMiniApp && !quizelo.userInfo && !quizelo.isLoading && (
+             <div className="mt-2 flex items-center justify-center">
+               <button 
+                 onClick={() => quizelo.refetchUserInfo()}
+                 className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+               >
+                 🔄 Retry
+               </button>
+             </div>
+           )}
          </motion.div>
        </motion.div>
      )}
@@ -2102,6 +2141,53 @@ const QuizeloApp = () => {
            <p className="font-black text-stone-800 text-base sm:text-lg">
              {quizelo.formatEther(quizelo.contractStats.balance)} CELO ✨
            </p>
+         </div>
+       </motion.div>
+     )}
+
+     {/* Contract Stats Loading/Error State */}
+     {isConnected && !quizelo.contractStats && (
+       <motion.div 
+         initial={{ opacity: 0, y: 20 }}
+         animate={{ opacity: 1, y: 0 }}
+         transition={{ duration: 0.6, delay: 0.9 }}
+         className="bg-stone-50/80 backdrop-blur-sm rounded-xl p-3 sm:p-4 shadow-xl border border-stone-200/50 w-[120%] -ml-[10%]"
+       >
+         <div className="flex items-center justify-between mb-3">
+           <div className="flex items-center space-x-3">
+             <motion.div 
+               className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-emerald-400 via-teal-500 to-green-500 rounded-lg flex items-center justify-center shadow-lg"
+               animate={quizelo.isLoading ? { rotate: 360 } : {}}
+               transition={{ duration: 2, repeat: quizelo.isLoading ? Infinity : 0 }}
+             >
+               <Coins className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+             </motion.div>
+             <span className="font-black text-stone-800 text-xs sm:text-sm">⚡ Game Status</span>
+           </div>
+           {quizelo.isLoading ? (
+             <div className="flex items-center space-x-2 bg-blue-100/80 px-2 py-1 rounded-full backdrop-blur-sm">
+               <LoadingSpinner size={3} color="text-blue-500" />
+               <span className="text-xs font-bold text-blue-600">Loading...</span>
+             </div>
+           ) : (
+             <div className="flex items-center space-x-2 bg-orange-100/80 px-2 py-1 rounded-full backdrop-blur-sm">
+               <AlertCircle className="w-3 h-3 text-orange-500" />
+               <span className="text-xs font-bold text-orange-600">Failed</span>
+             </div>
+           )}
+         </div>
+         <div className="bg-gradient-to-r from-orange-50/80 to-amber-50/80 rounded-lg p-3 border border-orange-200/60 backdrop-blur-sm">
+           <p className="text-stone-600 text-xs mb-1 font-bold">
+             {quizelo.isLoading ? '🔄 Loading contract data...' : '❌ Failed to load contract data'}
+           </p>
+           {!quizelo.isLoading && (
+             <button 
+               onClick={() => quizelo.refetchContractStats()}
+               className="text-xs text-orange-600 hover:text-orange-700 font-medium"
+             >
+               🔄 Retry Loading
+             </button>
+           )}
          </div>
        </motion.div>
      )}
@@ -2696,12 +2782,45 @@ const QuizeloApp = () => {
  useEffect(() => {
    const initializeApp = async () => {
      try {
-       // Load initial data
-       await Promise.all([
-         quizelo.refetchUserInfo(),
-         quizelo.refetchContractStats(),
-         quizelo.refetchActiveQuizTakers()
-       ]);
+       console.log('Initializing app...', { isSDKLoaded, isMiniApp, isInFarcaster, isConnected });
+       
+       // Load initial data with better error handling
+       const promises = [];
+       
+       // Only load quiz data if connected
+       if (isConnected) {
+         promises.push(
+           quizelo.refetchUserInfo().catch(err => {
+             console.error('Failed to fetch user info:', err);
+             return null;
+           })
+         );
+         
+         promises.push(
+           quizelo.refetchContractStats().catch(err => {
+             console.error('Failed to fetch contract stats:', err);
+             return null;
+           })
+         );
+         
+         promises.push(
+           quizelo.refetchActiveQuizTakers().catch(err => {
+             console.error('Failed to fetch active quiz takers:', err);
+             return null;
+           })
+         );
+       }
+       
+       // Always load leaderboard data (this works in Farcaster)
+       promises.push(
+         Promise.resolve().then(() => {
+           console.log('Leaderboard data should be loaded by useLeaderboard hook');
+           return null;
+         })
+       );
+       
+       await Promise.all(promises);
+       console.log('App initialization complete');
      } catch (error) {
        console.error('Error initializing app:', error);
      }
@@ -2710,7 +2829,7 @@ const QuizeloApp = () => {
    if (isSDKLoaded) {
      initializeApp();
    }
- }, [isSDKLoaded, quizelo]);
+ }, [isSDKLoaded, isConnected, quizelo, isMiniApp, isInFarcaster]);
  
  // Enhanced loading screen for SDK
  if (!isSDKLoaded) {

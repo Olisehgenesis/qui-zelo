@@ -255,6 +255,8 @@ Ensure:
         
         parsedQuestions = JSON.parse(cleanedText);
       } catch (parseError) {
+        //log the ai response
+        console.log('AI response:', questionsText);
         console.error('Initial parse failed:', parseError);
         
         const jsonMatch = questionsText.match(/\[[\s\S]*\]/);
