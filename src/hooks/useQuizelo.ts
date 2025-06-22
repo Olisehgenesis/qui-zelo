@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { encodeFunctionData, formatEther, parseEther } from 'viem';
 import { 
   useAccount, 
-  usePublicClient, 
-  useWalletClient, 
+  usePublicClient,  
   useSendTransaction, 
   useChainId,
   useSwitchChain,
@@ -46,8 +45,7 @@ interface ContractStats {
 // Custom hook for contract transactions
 const useContractTransaction = () => {
   const { sendTransactionAsync } = useSendTransaction();
-  const { data: walletClient } = useWalletClient();
-  const { isConnected } = useAccount(); // Add this to check connection status
+  const { isConnected } = useAccount();
   const publicClient = usePublicClient({ 
     chainId: env === 'dev' ? celoAlfajores.id : celo.id
   });
@@ -73,18 +71,19 @@ const useContractTransaction = () => {
         throw new Error('Please connect your wallet first');
       }
 
-      if (!walletClient) {
-        throw new Error('Wallet client not available. Please reconnect your wallet.');
-      }
-
       // Always switch to correct network before executing transaction
       if (currentChainId !== targetChainId) {
         console.log('🔄 Switching to correct network...');
-        await switchChain({ chainId: targetChainId });
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        try {
+          await switchChain({ chainId: targetChainId });
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (switchError) {
+          console.error('Failed to switch network:', switchError);
+          throw new Error('Failed to switch to the correct network');
+        }
       }
 
-      // Send transaction
+      // Send transaction - sendTransactionAsync handles wallet client internally
       const txHash = await sendTransactionAsync({
         to: QUIZELO_CONTRACT_ADDRESS,
         data: encodeFunctionData({
@@ -115,7 +114,7 @@ const useContractTransaction = () => {
       onError?.(error as Error);
       return { success: false, error: error as Error };
     }
-  }, [sendTransactionAsync, walletClient, isConnected, publicClient, currentChainId, switchChain]);
+  }, [sendTransactionAsync, isConnected, publicClient, currentChainId, switchChain]);
 
   return { executeTransaction };
 };
