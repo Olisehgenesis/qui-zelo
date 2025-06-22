@@ -19,6 +19,8 @@ import {
   RefreshCw,
   Star,
   Target,
+  TrendingUp,
+  Users,
 } from 'lucide-react';
 import { celo } from 'viem/chains';
 import { useSwitchChain, useChainId, useAccount, useConnect } from 'wagmi';
@@ -32,6 +34,7 @@ import type { Context } from '@farcaster/frame-sdk';
 import { useQuizelo } from '../hooks/useQuizelo';
 import { useTopics, TopicWithMetadata } from '../hooks/useTopics';
 import { useAI } from '../hooks/useAI';
+import { useLeaderboard } from '../hooks/useLeaderboard';
 import farcasterFrame from '@farcaster/frame-wagmi-connector';
 
 interface ScoreResult {
@@ -557,6 +560,19 @@ const QuizeloApp = () => {
   const quizelo = useQuizelo();
   const { topics, selectedTopic, selectTopic } = useTopics();
   const { generateQuestions, loading: aiLoading, error: aiError, questions, markAnswer, calculateScore } = useAI();
+  const { 
+    leaderboard, 
+    stats, 
+    isLoading: leaderboardLoading, 
+    error: leaderboardError,
+    getPlayerRank,
+    getPlayerStats,
+    getTopByEarnings,
+    getTopByWinRate,
+    formatEarnings,
+    formatWinRate,
+    formatAddress: formatLeaderboardAddress
+  } = useLeaderboard();
   const { switchChain } = useSwitchChain();
   const chainId = useChainId();
   const { address, isConnected } = useAccount();
@@ -1406,17 +1422,231 @@ const QuizeloApp = () => {
   
   // Enhanced Leaderboard Content
   const LeaderboardContent = () => (
-    <div className="p-4 sm:p-6 pb-32 overflow-y-auto">
-      <h2 className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 bg-clip-text text-transparent mb-6 sm:mb-8">
-        🏆 Hall of Fame
-      </h2>
-      <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 sm:p-12 shadow-xl border border-white/50 text-center">
-        <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-yellow-400 via-orange-500 to-red-500 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-2xl animate-bounce">
-          <Trophy className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
-        </div>
-        <h3 className="text-xl sm:text-2xl font-black text-slate-800 mb-4">🚀 Coming Soon!</h3>
-        <p className="text-slate-600 text-sm sm:text-base">Battle other crypto warriors and claim your spot on the leaderboard! ⚔️</p>
+    <div className="p-4 sm:p-6 pb-32 space-y-6 overflow-y-auto">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 bg-clip-text text-transparent">
+          🏆 Hall of Fame
+        </h2>
+        <button
+          onClick={() => window.location.reload()}
+          className="p-3 rounded-xl hover:bg-purple-100 transition-colors bg-white/80 backdrop-blur-sm border border-white/50 shadow-lg"
+        >
+          <RefreshCw className="w-6 h-6 text-slate-600" />
+        </button>
       </div>
+
+      {/* Loading State */}
+      {leaderboardLoading && (
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 sm:p-12 border border-white/50 text-center shadow-xl">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-purple-400 via-pink-500 to-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-2xl animate-spin">
+            <LoadingSpinner size={8} color="text-white" />
+          </div>
+          <h3 className="text-xl sm:text-2xl font-black text-slate-800 mb-4">Loading Leaderboard</h3>
+          <p className="text-slate-600">Fetching the latest player data...</p>
+        </div>
+      )}
+
+      {/* Error State */}
+      {!leaderboardLoading && leaderboardError && (
+        <div className="bg-gradient-to-r from-red-100 to-pink-100 border border-red-200 rounded-2xl p-6 shadow-lg">
+          <div className="flex items-center space-x-3">
+            <AlertCircle className="w-6 h-6 text-red-500 flex-shrink-0" />
+            <p className="text-red-700 font-bold">Failed to load leaderboard data</p>
+          </div>
+        </div>
+      )}
+
+      {/* Connected Player Stats */}
+      {isConnected && address && (
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-white/50 shadow-xl">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-purple-400 via-pink-500 to-blue-500 rounded-xl flex items-center justify-center shadow-lg">
+              <User className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            </div>
+            <div>
+              <h3 className="font-bold text-slate-800 text-base sm:text-lg">Your Stats</h3>
+              <p className="text-slate-600 text-sm">{formatAddress(address)}</p>
+            </div>
+          </div>
+          
+          {(() => {
+            const playerStats = getPlayerStats(address);
+            const playerRank = getPlayerRank(address);
+            
+            if (playerStats) {
+              return (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200 shadow-md">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Trophy className="w-4 h-4 text-purple-500" />
+                      <span className="text-sm font-bold text-slate-600">Rank</span>
+                    </div>
+                    <p className="text-2xl font-bold text-slate-800">#{playerRank}</p>
+                  </div>
+                  
+                  <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200 shadow-md">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Coins className="w-4 h-4 text-purple-500" />
+                      <span className="text-sm font-bold text-slate-600">Earnings</span>
+                    </div>
+                    <p className="text-2xl font-bold text-slate-800">{formatEarnings(playerStats.totalEarnings)}</p>
+                  </div>
+                  
+                  <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200 shadow-md">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Target className="w-4 h-4 text-purple-500" />
+                      <span className="text-sm font-bold text-slate-600">Quizzes</span>
+                    </div>
+                    <p className="text-2xl font-bold text-slate-800">{playerStats.totalQuizzes}</p>
+                  </div>
+                  
+                  <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200 shadow-md">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <TrendingUp className="w-4 h-4 text-purple-500" />
+                      <span className="text-sm font-bold text-slate-600">Win Rate</span>
+                    </div>
+                    <p className="text-2xl font-bold text-slate-800">{formatWinRate(playerStats.winRate)}</p>
+                  </div>
+                </div>
+              );
+            } else {
+              return (
+                <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200 text-center shadow-md">
+                  <p className="text-slate-800 font-bold">No stats yet</p>
+                  <p className="text-slate-600 text-sm">Complete your first quiz to appear on the leaderboard!</p>
+                </div>
+              );
+            }
+          })()}
+        </div>
+      )}
+
+      {/* Global Stats */}
+      {stats && (
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-white/50 shadow-xl">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-purple-400 via-pink-500 to-blue-500 rounded-xl flex items-center justify-center shadow-lg">
+              <Trophy className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            </div>
+            <h3 className="font-bold text-slate-800 text-base sm:text-lg">Global Stats</h3>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200 shadow-md">
+              <div className="flex items-center space-x-2 mb-2">
+                <Users className="w-4 h-4 text-purple-500" />
+                <span className="text-sm font-bold text-slate-600">Players</span>
+              </div>
+              <p className="text-2xl font-bold text-slate-800">{stats.totalPlayers}</p>
+            </div>
+            
+            <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200 shadow-md">
+              <div className="flex items-center space-x-2 mb-2">
+                <Target className="w-4 h-4 text-purple-500" />
+                <span className="text-sm font-bold text-slate-600">Quizzes</span>
+              </div>
+              <p className="text-2xl font-bold text-slate-800">{stats.totalQuizzes}</p>
+            </div>
+            
+            <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200 shadow-md">
+              <div className="flex items-center space-x-2 mb-2">
+                <Coins className="w-4 h-4 text-purple-500" />
+                <span className="text-sm font-bold text-slate-600">Rewards</span>
+              </div>
+              <p className="text-2xl font-bold text-slate-800">{formatEarnings(stats.totalRewards)}</p>
+            </div>
+            
+            <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200 shadow-md">
+              <div className="flex items-center space-x-2 mb-2">
+                <TrendingUp className="w-4 h-4 text-purple-500" />
+                <span className="text-sm font-bold text-slate-600">Avg Win Rate</span>
+              </div>
+              <p className="text-2xl font-bold text-slate-800">{formatWinRate(stats.avgWinRate)}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Top Earners */}
+      {leaderboard.length > 0 && (
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-white/50 shadow-xl">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-purple-400 via-pink-500 to-blue-500 rounded-xl flex items-center justify-center shadow-lg">
+              <Coins className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            </div>
+            <h3 className="font-bold text-slate-800 text-base sm:text-lg">Top Earners</h3>
+          </div>
+          
+          <div className="space-y-3">
+            {getTopByEarnings(5).map((player, index) => (
+              <div 
+                key={player.address}
+                className="flex items-center justify-between p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-200 shadow-md hover:shadow-lg transition-all"
+              >
+                <div className="flex items-center space-x-4">
+                  <div className="w-8 h-8 bg-gradient-to-br from-purple-400 via-pink-500 to-blue-500 rounded-full flex items-center justify-center">
+                    <span className="text-white font-bold text-sm">{index + 1}</span>
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-800">{formatLeaderboardAddress(player.address)}</p>
+                    <p className="text-slate-600 text-sm">{player.totalQuizzes} quizzes</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="font-bold text-slate-800">{formatEarnings(player.totalEarnings)}</p>
+                  <p className="text-slate-600 text-sm">{formatWinRate(player.winRate)} win rate</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Best Win Rates */}
+      {leaderboard.length > 0 && (
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-white/50 shadow-xl">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-purple-400 via-pink-500 to-blue-500 rounded-xl flex items-center justify-center shadow-lg">
+              <Star className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            </div>
+            <h3 className="font-bold text-slate-800 text-base sm:text-lg">Best Win Rates</h3>
+          </div>
+          
+          <div className="space-y-3">
+            {getTopByWinRate(5).map((player, index) => (
+              <div 
+                key={player.address}
+                className="flex items-center justify-between p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-200 shadow-md hover:shadow-lg transition-all"
+              >
+                <div className="flex items-center space-x-4">
+                  <div className="w-8 h-8 bg-gradient-to-br from-purple-400 via-pink-500 to-blue-500 rounded-full flex items-center justify-center">
+                    <span className="text-white font-bold text-sm">{index + 1}</span>
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-800">{formatLeaderboardAddress(player.address)}</p>
+                    <p className="text-slate-600 text-sm">{player.totalQuizzes} quizzes</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="font-bold text-slate-800">{formatWinRate(player.winRate)}</p>
+                  <p className="text-slate-600 text-sm">{formatEarnings(player.totalEarnings)} earned</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!leaderboardLoading && leaderboard.length === 0 && stats && (
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 sm:p-12 border border-white/50 text-center shadow-xl">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-purple-400 via-pink-500 to-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-2xl">
+            <Trophy className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
+          </div>
+          <h3 className="text-xl sm:text-2xl font-black text-slate-800 mb-4">No Players Yet</h3>
+          <p className="text-slate-600">Be the first to complete a quiz and claim the top spot!</p>
+        </div>
+      )}
     </div>
   );
   

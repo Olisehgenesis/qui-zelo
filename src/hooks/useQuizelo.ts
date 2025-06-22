@@ -47,6 +47,7 @@ interface ContractStats {
 const useContractTransaction = () => {
   const { sendTransactionAsync } = useSendTransaction();
   const { data: walletClient } = useWalletClient();
+  const { isConnected } = useAccount(); // Add this to check connection status
   const publicClient = usePublicClient({ 
     chainId: env === 'dev' ? celoAlfajores.id : celo.id
   });
@@ -67,7 +68,14 @@ const useContractTransaction = () => {
     onError?: (error: Error) => void;
   }) => {
     try {
-      if (!walletClient) throw new Error('Wallet not connected');
+      // Check if wallet is connected first
+      if (!isConnected) {
+        throw new Error('Please connect your wallet first');
+      }
+
+      if (!walletClient) {
+        throw new Error('Wallet client not available. Please reconnect your wallet.');
+      }
 
       // Always switch to correct network before executing transaction
       if (currentChainId !== targetChainId) {
@@ -107,13 +115,13 @@ const useContractTransaction = () => {
       onError?.(error as Error);
       return { success: false, error: error as Error };
     }
-  }, [sendTransactionAsync, walletClient, publicClient, currentChainId, switchChain]);
+  }, [sendTransactionAsync, walletClient, isConnected, publicClient, currentChainId, switchChain]);
 
   return { executeTransaction };
 };
 
 export const useQuizelo = () => {
-  const { address } = useAccount();
+  const { address, isConnected } = useAccount();
   const publicClient = usePublicClient({ chainId: env === 'dev' ? celoAlfajores.id : celo.id });
   const currentChainId = useChainId();
   const { switchChain } = useSwitchChain();
@@ -233,7 +241,8 @@ export const useQuizelo = () => {
 
   // Main contract interaction functions
   const startQuiz = async () => {
-    if (!address) {
+    // Early validation checks
+    if (!isConnected || !address) {
       showError('Please connect your wallet first');
       return { success: false, sessionId: null };
     }
@@ -287,7 +296,7 @@ export const useQuizelo = () => {
   };
 
   const claimReward = async (sessionId: string, score: number) => {
-    if (!address) {
+    if (!isConnected || !address) {
       showError('Please connect your wallet first');
       return;
     }
@@ -381,7 +390,7 @@ export const useQuizelo = () => {
   };
 
   const cleanupExpiredQuiz = async (sessionId: string) => {
-    if (!address) {
+    if (!isConnected || !address) {
       showError('Please connect your wallet first');
       return;
     }
@@ -409,7 +418,7 @@ export const useQuizelo = () => {
 
   // Admin functions
   const topUpContract = async (amount: bigint) => {
-    if (!address) {
+    if (!isConnected || !address) {
       showError('Please connect your wallet first');
       return;
     }
@@ -437,7 +446,7 @@ export const useQuizelo = () => {
   };
 
   const adminEmergencyDrain = async () => {
-    if (!address) {
+    if (!isConnected || !address) {
       showError('Please connect your wallet first');
       return;
     }
@@ -464,7 +473,7 @@ export const useQuizelo = () => {
   };
 
   const adminCleanupExpired = async () => {
-    if (!address) {
+    if (!isConnected || !address) {
       showError('Please connect your wallet first');
       return;
     }
@@ -621,7 +630,7 @@ export const useQuizelo = () => {
     currentQuizSession,
     currentChainId,
     targetChainId,
-    isConnected: !!address,
+    isConnected,
     isOnCorrectNetwork: currentChainId === targetChainId,
 
     // Constants from contract
