@@ -63,7 +63,6 @@ interface QuizInfoModalProps {
 interface QuizGenerationModalProps {
   isVisible: boolean;
   topic: TopicWithMetadata | null;
-  onClose: () => void;
 }
 
 interface TransactionModalProps {
@@ -108,9 +107,15 @@ const LoadingSpinner = ({ size = 6, color = 'text-amber-600' }) => (
 );
 
 // Enhanced Horizontal Timer with cooler effects
-const HorizontalTimer = ({ timeLeft, totalTime = 15, onTimeUp }: { timeLeft: number, totalTime?: number, onTimeUp: () => void }) => {
+const HorizontalTimer = ({ timeLeft, totalTime = 15, onTimeUp, isTimeUp }: { timeLeft: number, totalTime?: number, onTimeUp: () => void, isTimeUp: boolean }) => {
   const progress = (timeLeft / totalTime) * 100;
-  console.log("On time up", onTimeUp);
+  
+  // Call onTimeUp when timeLeft reaches 0 and isTimeUp is true
+  useEffect(() => {
+    if (timeLeft === 0 && isTimeUp) {
+      onTimeUp();
+    }
+  }, [timeLeft, isTimeUp, onTimeUp]);
   
   const getTimerColor = () => {
     if (timeLeft <= 3) return 'from-red-400 to-orange-500';
@@ -470,10 +475,8 @@ const QuizInfoModal = ({
 };
 
 // Enhanced Quiz Generation Modal with floating elements
-const QuizGenerationModal = ({ isVisible, topic, onClose }: QuizGenerationModalProps) => {
+const QuizGenerationModal = ({ isVisible, topic }: QuizGenerationModalProps) => {
   if (!isVisible) return null;
-
-  console.log("close", onClose);
   
   return (
     <AnimatePresence>
@@ -905,6 +908,7 @@ const QuizeloApp = () => {
  const [currentQuestionResult, setCurrentQuestionResult] = useState<QuestionResult | null>(null);
  const [isAnswered, setIsAnswered] = useState(false);
  const [showQuizInfo, setShowQuizInfo] = useState(false);
+ const [isTimeUp, setIsTimeUp] = useState(false);
  const [context, setContext] = useState<{
    client?: {
      clientFid?: number;
@@ -948,9 +952,10 @@ const QuizeloApp = () => {
  const isInFarcaster = context?.client?.clientFid !== undefined;
 
  const handleAnswer = useCallback((answerIndex: number) => {
-   if (isAnswered) return; // Prevent multiple answers
+   if (isAnswered || isTimeUp) return; // Prevent multiple answers
    
    setIsAnswered(true);
+   setIsTimeUp(false); // Reset time up flag
    const newAnswers = [...userAnswers, answerIndex];
    setUserAnswers(newAnswers);
 
@@ -969,7 +974,7 @@ const QuizeloApp = () => {
    });
    
    setShowQuestionResult(true);
- }, [isAnswered, userAnswers, currentQuestionIndex, questions, markAnswer]);
+ }, [isAnswered, isTimeUp, userAnswers, currentQuestionIndex, questions, markAnswer]);
 
  // Timer effect for quiz questions
  useEffect(() => {
@@ -978,8 +983,9 @@ const QuizeloApp = () => {
      timer = setInterval(() => {
        setTimeLeft(prev => {
          if (prev <= 1) {
-           handleAnswer(-1); // Auto-submit with no answer
-           return 15;
+           // Set time up flag and set timeLeft to 0
+           setIsTimeUp(true);
+           return 0;
          }
          return prev - 1;
        });
@@ -988,7 +994,15 @@ const QuizeloApp = () => {
    return () => {
      if (timer) clearInterval(timer);
    };
- }, [isInQuiz, showResults, showQuestionResult, isAnswered, timeLeft, currentQuestionIndex, handleAnswer]);
+ }, [isInQuiz, showResults, showQuestionResult, isAnswered, timeLeft]);
+
+ // Reset timer when question changes
+ useEffect(() => {
+   if (isInQuiz && !showResults && !showQuestionResult) {
+     setTimeLeft(15);
+     setIsTimeUp(false);
+   }
+ }, [currentQuestionIndex, isInQuiz, showResults, showQuestionResult]);
 
  // Check wallet connection on mount and handle disconnection
  useEffect(() => {
@@ -1000,7 +1014,6 @@ const QuizeloApp = () => {
    } else if (address && !quizelo.isConnected) {
      // Wallet is connected but quizelo hook hasn't detected it yet
      // This will be handled by the quizelo hook's own useEffect
-     console.log('Wallet detected:', address);
    } else if (!address && !quizelo.isConnected && !isMiniApp) {
      // No wallet connected and not in mini app, show connect modal
      setShowConnectWallet(true);
@@ -1115,6 +1128,7 @@ const QuizeloApp = () => {
  const handleContinueToNext = () => {
    setShowQuestionResult(false);
    setIsAnswered(false);
+   setIsTimeUp(false); // Reset time up flag
    
    if (currentQuestionIndex < questions.length - 1) {
      setCurrentQuestionIndex(currentQuestionIndex + 1);
@@ -1428,6 +1442,7 @@ const QuizeloApp = () => {
              timeLeft={timeLeft} 
              totalTime={15} 
              onTimeUp={() => handleAnswer(-1)} 
+             isTimeUp={isTimeUp}
            />
 
            {/* Enhanced Progress with XP bar style */}
@@ -2877,7 +2892,6 @@ const QuizeloApp = () => {
      <QuizGenerationModal 
        isVisible={showQuizGeneration} 
        topic={selectedTopic} 
-       onClose={() => setShowQuizGeneration(false)} 
      />
      <TransactionModal 
        isVisible={showTransactionModal}

@@ -49,7 +49,7 @@ const useContractTransaction = () => {
   const publicClient = usePublicClient({ 
     chainId: env === 'dev' ? celoAlfajores.id : celo.id
   });
-  const currentChainId = useChainId();
+  // const currentChainId = useChainId();
   const { switchChain } = useSwitchChain();
 
   const executeTransaction = useCallback(async ({
@@ -71,8 +71,7 @@ const useContractTransaction = () => {
         throw new Error('Please connect your wallet first');
       }
 
-      // Always switch to correct network before executing transaction
-      if (currentChainId !== targetChainId) {
+
         console.log('🔄 Switching to correct network...');
         try {
           await switchChain({ chainId: targetChainId });
@@ -81,7 +80,7 @@ const useContractTransaction = () => {
           console.error('Failed to switch network:', switchError);
           throw new Error('Failed to switch to the correct network');
         }
-      }
+      
 
       // Send transaction - sendTransactionAsync handles wallet client internally
       const txHash = await sendTransactionAsync({
@@ -114,7 +113,7 @@ const useContractTransaction = () => {
       onError?.(error as Error);
       return { success: false, error: error as Error };
     }
-  }, [sendTransactionAsync, isConnected, publicClient, currentChainId, switchChain]);
+  }, [sendTransactionAsync, isConnected, publicClient, switchChain]);
 
   return { executeTransaction };
 };
