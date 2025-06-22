@@ -79,6 +79,7 @@ export const useAI = () => {
 
   // Enhanced question validation with answer distribution check
   const validateQuestion = useCallback((question: Question, index: number): boolean => {
+    console.log('Validating question:', index);
     if (!question.question || typeof question.question !== 'string') return false;
     if (!Array.isArray(question.options) || question.options.length !== 4) return false;
     if (question.options.some(opt => !opt || typeof opt !== 'string')) return false;
