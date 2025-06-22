@@ -107,7 +107,7 @@ const LoadingSpinner = ({ size = 6, color = 'text-amber-600' }) => (
 );
 
 // Enhanced Horizontal Timer with cooler effects
-const HorizontalTimer = ({ timeLeft, totalTime = 15, onTimeUp, isTimeUp }: { timeLeft: number, totalTime?: number, onTimeUp: () => void, isTimeUp: boolean }) => {
+const HorizontalTimer = ({ timeLeft, totalTime = 15 }: { timeLeft: number, totalTime?: number }) => {
   const progress = (timeLeft / totalTime) * 100;
   
   const getTimerColor = () => {
@@ -998,7 +998,7 @@ const QuizeloApp = () => {
    return () => {
      if (timer) clearInterval(timer);
    };
- }, [isInQuiz, showResults, showQuestionResult, isAnswered, handleAnswer]);
+ }, [isInQuiz, showResults, showQuestionResult, isAnswered, handleAnswer, isTimeUp, timeLeft]);
 
  // Reset timer when question changes
  useEffect(() => {
@@ -1007,7 +1007,7 @@ const QuizeloApp = () => {
      setIsTimeUp(false);
      setIsAnswered(false);
    }
- }, [currentQuestionIndex]); // Only depend on question index, not other frequently changing states
+ }, [currentQuestionIndex, isInQuiz, showResults]); // Include missing dependencies
 
  // Check wallet connection on mount and handle disconnection
  useEffect(() => {
@@ -1460,8 +1460,6 @@ const QuizeloApp = () => {
            <HorizontalTimer 
              timeLeft={timeLeft} 
              totalTime={15} 
-             onTimeUp={() => handleAnswer(-1)} 
-             isTimeUp={isTimeUp}
            />
 
            {/* Enhanced Progress with XP bar style */}
