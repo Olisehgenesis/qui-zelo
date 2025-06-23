@@ -1,5 +1,4 @@
-//@ts-nocheck
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Home, 
@@ -19,10 +18,10 @@ import {
   Sparkles,
   Brain,
   RefreshCw,
-  Star,
+
   Target,
   TrendingUp,
-  Users,
+  
 } from 'lucide-react';
 import { celo } from 'viem/chains';
 import { useSwitchChain, useChainId, useAccount, useConnect } from 'wagmi';
@@ -143,6 +142,7 @@ const QuestionResult = ({ result, correctAnswer, userAnswer, onContinue, isLastQ
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
       >
+
         <motion.div 
           className={`bg-gradient-to-br from-stone-50 to-amber-50/80 backdrop-blur-xl rounded-3xl p-6 sm:p-8 w-full max-w-md mx-4 shadow-2xl border-2 ${
             result.isCorrect ? 'border-emerald-300/60' : 'border-orange-300/60'
@@ -588,16 +588,14 @@ const QuizeloApp = () => {
   const { topics, selectedTopic, selectTopic } = useTopics();
   const { generateQuestions, loading: aiLoading, error: aiError, questions, markAnswer, calculateScore } = useAI();
   const { 
-    leaderboard, 
-    stats, 
+  
     isLoading: leaderboardLoading,
     error: leaderboardError,
     getPlayerRank,
     getPlayerStats,
-    getTopByEarnings,
     formatEarnings,
     formatWinRate,
-    formatAddress: formatLeaderboardAddress
+  
   } = useLeaderboard();
   const { switchChain } = useSwitchChain();
   const chainId = useChainId();
@@ -607,49 +605,40 @@ const QuizeloApp = () => {
   // Detect if we're in Farcaster
   const isInFarcaster = context?.client?.clientFid !== undefined;
 
-  const handleAnswer = useMemo(() => (answerIndex: number) => {
+  const handleAnswer = useCallback((answerIndex: number) => {
     if (isAnswered || isTimeUp) return; // Prevent multiple answers
     
-    // Batch related state updates to prevent cascading effects
     setIsAnswered(true);
     
-    // Use setTimeout to batch the rest of the state updates
-    setTimeout(() => {
-      const newAnswers = [...userAnswers, answerIndex];
-      setUserAnswers(newAnswers);
+    const newAnswers = [...userAnswers, answerIndex];
+    setUserAnswers(newAnswers);
 
-      // Get result for this question
-      const result = markAnswer(currentQuestionIndex, answerIndex);
-      const correctAnswer = questions[currentQuestionIndex].options[questions[currentQuestionIndex].correctAnswer];
-      const userAnswer = answerIndex >= 0 ? questions[currentQuestionIndex].options[answerIndex] : 'No answer';
-      
-      setCurrentQuestionResult({
-        isCorrect: result?.isCorrect || false,
-        explanation: result?.explanation || '',
-        correctAnswer,
-        userAnswer,
-        isLastQuestion: currentQuestionIndex === questions.length - 1
-      });
-      
-      setShowQuestionResult(true);
-    }, 0);
+    // Get result for this question
+    const result = markAnswer(currentQuestionIndex, answerIndex);
+    const correctAnswer = questions[currentQuestionIndex].options[questions[currentQuestionIndex].correctAnswer];
+    const userAnswer = answerIndex >= 0 ? questions[currentQuestionIndex].options[answerIndex] : 'No answer';
+    
+    setCurrentQuestionResult({
+      isCorrect: result?.isCorrect || false,
+      explanation: result?.explanation || '',
+      correctAnswer,
+      userAnswer,
+      isLastQuestion: currentQuestionIndex === questions.length - 1
+    });
+    
+    setShowQuestionResult(true);
   }, [isAnswered, isTimeUp, userAnswers, currentQuestionIndex, questions, markAnswer]);
 
-  // Timer effect for quiz questions
+  // Timer effect for quiz questions - improved reactivity
   useEffect(() => {
     let timer: NodeJS.Timeout | undefined;
     
-    // Only start timer if quiz is active and question is not answered
     if (isInQuiz && !showResults && !showQuestionResult && !isAnswered && timeLeft > 0) {
       timer = setInterval(() => {
         setTimeLeft(prev => {
           if (prev <= 1) {
-            // Handle timeout directly here instead of triggering cascading effects
             if (!isAnswered && !isTimeUp) {
-              // Use setTimeout to avoid state update conflicts
-              setTimeout(() => {
-                handleAnswer(-1);
-              }, 0);
+              handleAnswer(-1);
             }
             return 0;
           }
@@ -688,7 +677,6 @@ const QuizeloApp = () => {
       
       // In Farcaster, manually trigger data loading after connection
       if (isMiniApp && isInFarcaster) {
-        console.log('Wallet connected in Farcaster, triggering data load...');
         setTimeout(() => {
           quizelo.refetchUserInfo();
           quizelo.refetchContractStats();
@@ -708,7 +696,7 @@ const QuizeloApp = () => {
       await switchChain({ chainId: celo.id });
       setShowNetworkModal(false);
     } catch (error) {
-      console.error('Failed to switch to Celo network:', error);
+      console.error(error);
       setNetworkError('Failed to switch to Celo network. Please try manually switching in your wallet.');
     } finally {
       setIsSwitchingNetwork(false);
@@ -719,14 +707,13 @@ const QuizeloApp = () => {
   useEffect(() => {
     if (isConnected && chainId !== celo.id) {
       setShowNetworkModal(true);
-      // Auto-attempt to switch
       switchToCelo();
     } else if (isConnected && chainId === celo.id) {
       setShowNetworkModal(false);
     }
   }, [isConnected, chainId, switchToCelo]);
 
-  const handleTopicSelect = async (topic: TopicWithMetadata) => {
+  const handleTopicSelect = useCallback(async (topic: TopicWithMetadata) => {
     selectTopic(topic);
     setShowTopicModal(false);
     
@@ -744,14 +731,14 @@ const QuizeloApp = () => {
 
     // Show quiz info modal instead of starting quiz directly
     setShowQuizInfo(true);
-  };
+  }, [selectTopic, isConnected, chainId, switchToCelo]);
 
-  const handleStartQuiz = async () => {
+  const handleStartQuiz = useCallback(async () => {
     setShowQuizInfo(false);
     await startQuizFlow();
-  };
+  }, []);
 
-  const startQuizFlow = async (topic = selectedTopic) => {
+  const startQuizFlow = useCallback(async (topic = selectedTopic) => {
     if (!topic) {
       setShowTopicModal(true);
       return;
@@ -795,35 +782,31 @@ const QuizeloApp = () => {
         setTransactionStatus('error');
       }
     } catch (error) {
-      console.error('Failed to start quiz:', error);
+      console.error(error);
       setTransactionStatus('error');
     }
-  };
+  }, [selectedTopic, chainId, switchToCelo, quizelo, generateQuestions]);
 
-  const handleContinueToNext = () => {
+  const handleContinueToNext = useCallback(() => {
     setShowQuestionResult(false);
     
-    // Batch state updates to prevent cascading effects
-    setTimeout(() => {
-      setIsAnswered(false);
-      setIsTimeUp(false); // Reset time up flag
-      
-      if (currentQuestionIndex < questions.length - 1) {
-        setCurrentQuestionIndex(currentQuestionIndex + 1);
-        // Timer will be reset by the useEffect that depends on currentQuestionIndex
-      } else {
-        // Calculate final score and show results
-        const score = calculateScore(userAnswers);
-        setFinalScore(score);
-        setIsInQuiz(false);
-        setShowResults(true);
-      }
-      
-      setCurrentQuestionResult(null);
-    }, 0);
-  };
+    setIsAnswered(false);
+    setIsTimeUp(false);
+    
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex(currentQuestionIndex + 1);
+    } else {
+      // Calculate final score and show results
+      const score = calculateScore(userAnswers);
+      setFinalScore(score);
+      setIsInQuiz(false);
+      setShowResults(true);
+    }
+    
+    setCurrentQuestionResult(null);
+  }, [currentQuestionIndex, questions.length, calculateScore, userAnswers]);
 
-  const handleClaimReward = async () => {
+  const handleClaimReward = useCallback(async () => {
     if (!quizSessionId || !finalScore) return;
     
     try {
@@ -832,16 +815,17 @@ const QuizeloApp = () => {
       setQuizSessionId(null);
       setFinalScore(null);
     } catch (error) {
-      console.error('Failed to claim reward:', error);
+      console.error(error);
+      // Handle error silently or show user-friendly message
     }
-  };
+  }, [quizSessionId, finalScore, quizelo]);
 
-  const handleRetakeQuiz = () => {
+  const handleRetakeQuiz = useCallback(() => {
     setShowResults(false);
     setQuizSessionId(null);
     setFinalScore(null);
     setShowTopicModal(true);
-  };
+  }, []);
 
   // Simplified Results Page
   const ResultsPage = () => {
@@ -975,34 +959,34 @@ const QuizeloApp = () => {
 
     return (
       <div className="fixed inset-0 bg-gradient-to-br from-stone-100 via-amber-50 to-orange-100 overflow-y-auto">
-        <div className="min-h-screen p-4 sm:p-6">
-          <div className="max-w-lg mx-auto">
-            {/* Game Header - NO ANIMATIONS */}
-            <div className="flex items-center justify-between mb-4 sm:mb-6 bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 sm:p-6 shadow-xl border border-stone-200/50">
+        <div className="min-h-screen p-mobile">
+          <div className="max-w-sm mx-auto">
+            {/* Game Header - Mobile optimized */}
+            <div className="flex items-center justify-between mb-4 sm:mb-6 bg-stone-50/80 backdrop-blur-xl rounded-2xl p-mobile shadow-xl border border-stone-200/50">
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-xl flex items-center justify-center shadow-lg">
                   <Brain className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                 </div>
                 <div>
-                  <h1 className="font-black text-stone-800 text-sm sm:text-base">🎯 {selectedTopic?.title}</h1>
-                  <p className="text-xs sm:text-sm text-stone-500">
+                  <h1 className="font-black text-stone-800 text-mobile-sm">🎯 {selectedTopic?.title}</h1>
+                  <p className="text-mobile-xs text-stone-500">
                     🎮 Question {currentQuestionIndex + 1} of {questions.length}
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Timer - SIMPLIFIED */}
+            {/* Timer - Mobile optimized */}
             <HorizontalTimer 
               timeLeft={timeLeft} 
               totalTime={15} 
             />
 
-            {/* Progress - NO ANIMATIONS */}
+            {/* Progress - Mobile optimized */}
             <div className="mb-6">
               <div className="flex justify-between items-center mb-2">
-                <span className="text-sm font-bold text-stone-600">🏆 Progress</span>
-                <span className="text-sm font-bold text-stone-600">
+                <span className="text-mobile-sm font-bold text-stone-600">🏆 Progress</span>
+                <span className="text-mobile-sm font-bold text-stone-600">
                   {Math.round(((currentQuestionIndex + 1) / questions.length) * 100)}% Complete
                 </span>
               </div>
@@ -1014,14 +998,14 @@ const QuizeloApp = () => {
               </div>
             </div>
 
-            {/* Question Card - MINIMAL ANIMATIONS */}
-            <div className="bg-stone-50/80 backdrop-blur-xl rounded-3xl p-6 sm:p-8 shadow-2xl border-2 border-stone-200/50 mb-6 relative overflow-hidden">
+            {/* Question Card - Mobile optimized */}
+            <div className="bg-stone-50/80 backdrop-blur-xl rounded-3xl p-mobile shadow-2xl border-2 border-stone-200/50 mb-6 relative overflow-hidden">
               <div className="relative">
                 <div className="flex items-start space-x-4 mb-6">
                   <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-xl flex items-center justify-center flex-shrink-0 mt-1 shadow-lg">
-                    <span className="text-white text-sm sm:text-base font-bold">{currentQuestionIndex + 1}</span>
+                    <span className="text-white text-mobile-sm font-bold">{currentQuestionIndex + 1}</span>
                   </div>
-                  <h2 className="text-lg sm:text-xl font-black text-stone-800 leading-relaxed">
+                  <h2 className="text-mobile-base sm:text-xl font-black text-stone-800 leading-relaxed">
                     🤔 {question.question}
                   </h2>
                 </div>
@@ -1032,7 +1016,7 @@ const QuizeloApp = () => {
                       key={index}
                       onClick={() => handleAnswer(index)}
                       disabled={isAnswered}
-                      className={`w-full p-4 sm:p-5 text-left rounded-2xl border-2 transition-all duration-300 group relative overflow-hidden shadow-lg ${
+                      className={`w-full p-4 sm:p-5 text-left rounded-2xl border-2 transition-all duration-300 group relative overflow-hidden shadow-lg btn-mobile ${
                         isAnswered
                           ? index === question.correctAnswer
                             ? 'border-emerald-400 bg-gradient-to-r from-emerald-100/80 to-teal-100/80 shadow-emerald-200/50'
@@ -1056,7 +1040,7 @@ const QuizeloApp = () => {
                             {String.fromCharCode(65 + index)}
                           </span>
                         </div>
-                        <span className="text-stone-700 group-hover:text-stone-800 font-medium text-sm sm:text-base flex-1">
+                        <span className="text-stone-700 group-hover:text-stone-800 font-medium text-mobile-sm flex-1">
                           {option}
                         </span>
                       </div>
@@ -1219,10 +1203,7 @@ const QuizeloApp = () => {
               🎯 Choose Your Quest
             </h3>
             <button 
-              onClick={() => {
-                console.log('Close button clicked! Setting showTopicModal to false');
-                setShowTopicModal(false);
-              }}
+              onClick={() => setShowTopicModal(false)}
               className="p-2 rounded-full hover:bg-amber-100/80 transition-colors"
             >
               <X className="w-5 h-5 sm:w-6 sm:h-6 text-stone-400" />
@@ -1230,17 +1211,14 @@ const QuizeloApp = () => {
           </div>
           
           <div className="p-4 sm:p-6 space-y-4">
-            {topics.map((topic, index) => (
+            {topics.map((topic) => (
               <button
                 key={topic.id}
-                onClick={() => {
-                  console.log('Topic selected:', topic.title);
-                  handleTopicSelect(topic);
-                }}
+                onClick={() => handleTopicSelect(topic)}
                 className="w-full p-4 sm:p-6 bg-stone-50/60 backdrop-blur-sm rounded-2xl border-2 border-stone-200/50 hover:border-amber-300/60 hover:bg-gradient-to-r hover:from-amber-50/80 hover:to-orange-50/80 transition-all text-left group relative overflow-hidden shadow-lg"
               >
                 <div className="relative flex items-center space-x-4">
-                  <div className="text-3xl sm:text-4xl bg-gradient-to-br from-amber-100/80 to-orange-100/80 group-hover:from-amber-200/80 group-hover:to-orange-200/80 w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center transition-allshadow-lg">
+                  <div className="text-3xl sm:text-4xl bg-gradient-to-br from-amber-100/80 to-orange-100/80 group-hover:from-amber-200/80 group-hover:to-orange-200/80 w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center transition-all shadow-lg">
                    {topic.icon}
                  </div>
                  <div className="flex-1">
@@ -1263,25 +1241,25 @@ const QuizeloApp = () => {
  
  // Simplified Home Content
  const HomeContent = () => (
-   <div className="p-0 sm:p-6 pb-32 space-y-6 w-full">
+   <div className="space-y-4 w-full p-3">
      {/* Hero Section */}
-     <div className="bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-2xl p-4 sm:p-6 text-white relative overflow-hidden shadow-2xl w-[120%] -ml-[10%]">
+     <div className="bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-2xl p-4 text-white relative overflow-hidden shadow-2xl border-2 border-white/20">
        <div className="relative">
          <div className="flex items-center space-x-3 mb-4">
            <div className="bg-white/20 p-2 rounded-xl backdrop-blur-sm shadow-lg">
-             <Sparkles className="w-6 h-6 text-white" />
+             <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
            </div>
            <div>
-             <h1 className="text-2xl sm:text-3xl font-black">
+             <h1 className="text-mobile-xl sm:text-2xl font-black">
                🎮 Quizelo
              </h1>
-             <p className="text-orange-100 font-bold text-xs sm:text-sm">
+             <p className="text-orange-100 font-bold text-mobile-xs">
                {isMiniApp && isInFarcaster ? '🎭 Powered by Farcaster x Celo' : '🌱 Powered by Celo Magic'}
              </p>
            </div>
          </div>
          
-         <p className="text-orange-100 mb-4 text-sm sm:text-base leading-relaxed font-medium">
+         <p className="text-orange-100 mb-4 text-mobile-sm leading-relaxed font-medium">
            🎮 Level up your Celo knowledge and earn epic CELO rewards! Join thousands of crypto warriors on the ultimate blockchain adventure! ⚔️💰
          </p>
          
@@ -1303,7 +1281,7 @@ const QuizeloApp = () => {
                <button
                  onClick={switchToCelo}
                  disabled={isSwitchingNetwork}
-                 className="flex items-center space-x-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                 className="flex items-center space-x-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed btn-mobile"
                >
                  {isSwitchingNetwork ? (
                    <LoadingSpinner size={4} color="text-white" />
@@ -1334,7 +1312,7 @@ const QuizeloApp = () => {
                </div>
                <button
                  onClick={() => setShowConnectWallet(true)}
-                 className="flex items-center space-x-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg transition-all"
+                 className="flex items-center space-x-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg transition-all btn-mobile"
                >
                  <span className="text-white text-xs font-medium">🔗 Connect</span>
                </button>
@@ -1346,32 +1324,21 @@ const QuizeloApp = () => {
 
      {/* Farcaster Mini App Features */}
      {isMiniApp && isInFarcaster && (
-       <div className="bg-stone-50/80 backdrop-blur-sm rounded-xl p-3 sm:p-4 shadow-xl border border-stone-200/50">
+       <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50">
          <div className="flex items-center space-x-3 mb-3">
            <div className="w-8 h-8 bg-gradient-to-br from-amber-400 to-orange-500 rounded-lg flex items-center justify-center">
              <span className="text-white text-sm">🎭</span>
            </div>
            <div>
-             <h3 className="font-black text-stone-800 text-sm">🚀 Farcaster Mini App</h3>
-             <p className="text-stone-600 text-xs">Special features for Farcaster users</p>
+             <h3 className="font-black text-stone-800 text-mobile-sm">🚀 Farcaster Mini App</h3>
+             <p className="text-stone-600 text-mobile-xs">Special features for Farcaster users</p>
            </div>
-         </div>
-         
-         <div className="mb-3 p-2 bg-gray-100/80 rounded-lg text-xs">
-           <p><strong>🔍 Debug Info:</strong></p>
-           <p>showTopicModal: {showTopicModal ? 'true' : 'false'}</p>
-           <p>isConnected: {isConnected ? 'true' : 'false'}</p>
-           <p>isInQuiz: {isInQuiz ? 'true' : 'false'}</p>
-           <p>showResults: {showResults ? 'true' : 'false'}</p>
          </div>
          
          <div className="grid grid-cols-2 gap-2">
            <button
-             onClick={() => {
-               console.log('Farcaster Start Quiz button clicked!');
-               setShowTopicModal(true);
-             }}
-             className="p-2 rounded-lg text-xs font-medium bg-amber-100/80 text-amber-600 hover:bg-amber-200/80 transition-all"
+             onClick={() => setShowTopicModal(true)}
+             className="p-2 rounded-lg text-mobile-xs font-medium bg-amber-100/80 text-amber-600 hover:bg-amber-200/80 transition-all btn-mobile"
            >
              🎮 Start Quiz
            </button>
@@ -1383,14 +1350,14 @@ const QuizeloApp = () => {
                const composeUrl = `https://warpcast.com/~/compose?text=${encodedText}`;
                sdk.actions.openUrl(composeUrl);
              }}
-             className="p-2 rounded-lg text-xs font-medium bg-blue-100/80 text-blue-600 hover:bg-blue-200/80 transition-all"
+             className="p-2 rounded-lg text-mobile-xs font-medium bg-blue-100/80 text-blue-600 hover:bg-blue-200/80 transition-all btn-mobile"
            >
              📤 Share Quizelo
            </button>
            
            <button
              onClick={() => sdk.actions.close()}
-             className="p-2 rounded-lg text-xs font-medium bg-red-100/80 text-red-600 hover:bg-red-200/80 transition-all"
+             className="p-2 rounded-lg text-mobile-xs font-medium bg-red-100/80 text-red-600 hover:bg-red-200/80 transition-all btn-mobile"
            >
              ❌ Close App
            </button>
@@ -1400,15 +1367,15 @@ const QuizeloApp = () => {
 
      {/* Game Stats */}
      {isConnected && (
-       <div className="grid grid-cols-2 gap-3 w-[120%] -ml-[10%]">
-         <div className="bg-stone-50/80 backdrop-blur-sm rounded-xl p-3 sm:p-4 shadow-xl border border-stone-200/50 hover:shadow-2xl transition-all group">
+       <div className="grid grid-cols-2 gap-3">
+         <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50 hover:shadow-2xl transition-all group">
            <div className="flex items-center space-x-3 mb-2">
              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-lg flex items-center justify-center shadow-lg">
                <Trophy className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
              </div>
-             <span className="text-xs font-bold text-stone-600">🏆 Today's Quests</span>
+             <span className="text-mobile-xs font-bold text-stone-600">🏆 Todayz Quests</span>
            </div>
-           <p className="text-xl sm:text-2xl font-black bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
+           <p className="text-mobile-xl sm:text-2xl font-black bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
              {quizelo.userInfo?.dailyCount ?? 0}/{quizelo.maxDailyQuizzes ?? 3}
            </p>
            {isMiniApp && !quizelo.userInfo && quizelo.isLoading && (
@@ -1420,7 +1387,7 @@ const QuizeloApp = () => {
              <div className="mt-2 flex items-center justify-center">
                <button 
                  onClick={() => quizelo.refetchUserInfo()}
-                 className="text-xs text-orange-600 hover:text-orange-700 font-medium"
+                 className="text-mobile-xs text-orange-600 hover:text-orange-700 font-medium"
                >
                  🔄 Retry
                </button>
@@ -1428,14 +1395,14 @@ const QuizeloApp = () => {
            )}
          </div>
          
-         <div className="bg-stone-50/80 backdrop-blur-sm rounded-xl p-3 sm:p-4 shadow-xl border border-stone-200/50 hover:shadow-2xl transition-all group">
+         <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50 hover:shadow-2xl transition-all group">
            <div className="flex items-center space-x-3 mb-2">
              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-teal-400 via-blue-500 to-purple-500 rounded-lg flex items-center justify-center shadow-lg">
                <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
              </div>
-             <span className="text-xs font-bold text-stone-600">⏰ Next Quest</span>
+             <span className="text-mobile-xs font-bold text-stone-600">⏰ Next Quest</span>
            </div>
-           <p className="text-lg sm:text-xl font-black bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+           <p className="text-mobile-lg sm:text-xl font-black bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
              {quizelo.userInfo ? (
                quizelo.timeUntilNextQuiz > 0 
                  ? `${Math.floor(quizelo.timeUntilNextQuiz / 60)}:${(quizelo.timeUntilNextQuiz % 60).toString().padStart(2, '0')}`
@@ -1454,7 +1421,7 @@ const QuizeloApp = () => {
              <div className="mt-2 flex items-center justify-center">
                <button 
                  onClick={() => quizelo.refetchUserInfo()}
-                 className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                 className="text-mobile-xs text-blue-600 hover:text-blue-700 font-medium"
                >
                  🔄 Retry
                </button>
@@ -1466,29 +1433,29 @@ const QuizeloApp = () => {
 
      {/* Contract Status */}
      {quizelo.contractStats && (
-       <div className="bg-stone-50/80 backdrop-blur-sm rounded-xl p-3 sm:p-4 shadow-xl border border-stone-200/50 hover:shadow-2xl transition-all w-[120%] -ml-[10%]">
+       <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50 hover:shadow-2xl transition-all">
          <div className="flex items-center justify-between mb-3">
            <div className="flex items-center space-x-3">
              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-emerald-400 via-teal-500 to-green-500 rounded-lg flex items-center justify-center shadow-lg">
                <Coins className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
              </div>
-             <span className="font-black text-stone-800 text-xs sm:text-sm">⚡ Game Status</span>
+             <span className="font-black text-stone-800 text-mobile-sm">⚡ Game Status</span>
            </div>
            {quizelo.contractStats.operational ? (
              <div className="flex items-center space-x-2 bg-emerald-100/80 px-2 py-1 rounded-full backdrop-blur-sm">
                <CheckCircle className="w-3 h-3 text-emerald-500" />
-               <span className="text-xs font-bold text-emerald-600">🟢 Online</span>
+               <span className="text-mobile-xs font-bold text-emerald-600">🟢 Online</span>
              </div>
            ) : (
              <div className="flex items-center space-x-2 bg-red-100/80 px-2 py-1 rounded-full backdrop-blur-sm">
                <AlertCircle className="w-3 h-3 text-red-500" />
-               <span className="text-xs font-bold text-red-600">🔴 Limited</span>
+               <span className="text-mobile-xs font-bold text-red-600">🔴 Limited</span>
              </div>
            )}
          </div>
          <div className="bg-gradient-to-r from-emerald-50/80 to-teal-50/80 rounded-lg p-3 border border-emerald-200/60 backdrop-blur-sm">
-           <p className="text-stone-600 text-xs mb-1 font-bold">💰 Reward Pool</p>
-           <p className="font-black text-stone-800 text-base sm:text-lg">
+           <p className="text-stone-600 text-mobile-xs mb-1 font-bold">💰 Reward Pool</p>
+           <p className="font-black text-stone-800 text-mobile-base sm:text-lg">
              {quizelo.formatEther(quizelo.contractStats.balance)} CELO ✨
            </p>
          </div>
@@ -1497,34 +1464,34 @@ const QuizeloApp = () => {
 
      {/* Contract Stats Loading/Error State */}
      {isConnected && !quizelo.contractStats && (
-       <div className="bg-stone-50/80 backdrop-blur-sm rounded-xl p-3 sm:p-4 shadow-xl border border-stone-200/50 w-[120%] -ml-[10%]">
+       <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50">
          <div className="flex items-center justify-between mb-3">
            <div className="flex items-center space-x-3">
              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-emerald-400 via-teal-500 to-green-500 rounded-lg flex items-center justify-center shadow-lg">
                <Coins className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
              </div>
-             <span className="font-black text-stone-800 text-xs sm:text-sm">⚡ Game Status</span>
+             <span className="font-black text-stone-800 text-mobile-sm">⚡ Game Status</span>
            </div>
            {quizelo.isLoading ? (
              <div className="flex items-center space-x-2 bg-blue-100/80 px-2 py-1 rounded-full backdrop-blur-sm">
                <LoadingSpinner size={3} color="text-blue-500" />
-               <span className="text-xs font-bold text-blue-600">Loading...</span>
+               <span className="text-mobile-xs font-bold text-blue-600">Loading...</span>
              </div>
            ) : (
              <div className="flex items-center space-x-2 bg-orange-100/80 px-2 py-1 rounded-full backdrop-blur-sm">
                <AlertCircle className="w-3 h-3 text-orange-500" />
-               <span className="text-xs font-bold text-orange-600">Failed</span>
+               <span className="text-mobile-xs font-bold text-orange-600">Failed</span>
              </div>
            )}
          </div>
          <div className="bg-gradient-to-r from-orange-50/80 to-amber-50/80 rounded-lg p-3 border border-orange-200/60 backdrop-blur-sm">
-           <p className="text-stone-600 text-xs mb-1 font-bold">
+           <p className="text-stone-600 text-mobile-xs mb-1 font-bold">
              {quizelo.isLoading ? '🔄 Loading contract data...' : '❌ Failed to load contract data'}
            </p>
            {!quizelo.isLoading && (
              <button 
                onClick={() => quizelo.refetchContractStats()}
-               className="text-xs text-orange-600 hover:text-orange-700 font-medium"
+               className="text-mobile-xs text-orange-600 hover:text-orange-700 font-medium"
              >
                🔄 Retry Loading
              </button>
@@ -1535,19 +1502,19 @@ const QuizeloApp = () => {
 
      {/* Selected Topic */}
      {selectedTopic && (
-       <div className="bg-stone-50/80 backdrop-blur-sm rounded-xl p-3 sm:p-4 shadow-xl border border-stone-200/50 hover:shadow-2xl transition-all w-[120%] -ml-[10%]">
+       <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50 hover:shadow-2xl transition-all">
          <div className="flex items-center space-x-4 mb-4">
            <div className="text-3xl sm:text-4xl bg-gradient-to-br from-amber-100/80 to-orange-100/80 w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center shadow-lg">
              {selectedTopic.icon}
            </div>
            <div className="flex-1">
-             <h3 className="font-black text-stone-800 text-base sm:text-lg">🎯 {selectedTopic.title}</h3>
-             <p className="text-stone-600 text-sm sm:text-base">{selectedTopic.description}</p>
+             <h3 className="font-black text-stone-800 text-mobile-base sm:text-lg">🎯 {selectedTopic.title}</h3>
+             <p className="text-stone-600 text-mobile-sm">{selectedTopic.description}</p>
            </div>
          </div>
          <button
            onClick={() => setShowTopicModal(true)}
-           className="text-amber-700 font-bold hover:text-amber-800 transition-colors flex items-center space-x-2 text-sm sm:text-base bg-amber-50/80 px-4 py-2 rounded-full hover:bg-amber-100/80 backdrop-blur-sm"
+           className="text-amber-700 font-bold hover:text-amber-800 transition-colors flex items-center space-x-2 text-mobile-sm bg-amber-50/80 px-4 py-2 rounded-full hover:bg-amber-100/80 backdrop-blur-sm btn-mobile"
          >
            <span>🔄 Change Quest</span>
            <ChevronRight className="w-4 h-4" />
@@ -1587,26 +1554,26 @@ const QuizeloApp = () => {
  
  // Simplified Leaderboard Content
  const LeaderboardContent = () => (
-   <div className="p-0 sm:p-6 pb-32 space-y-6 w-full">
+   <div className="space-y-4 w-full p-3">
      <div className="flex items-center justify-between">
-       <h2 className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-amber-700 via-orange-700 to-red-700 bg-clip-text text-transparent">
+       <h2 className="text-mobile-2xl sm:text-3xl font-black bg-gradient-to-r from-amber-700 via-orange-700 to-red-700 bg-clip-text text-transparent">
          🏆 Hall of Fame
        </h2>
        <button
          onClick={() => window.location.reload()}
-         className="p-3 rounded-xl hover:bg-amber-100/80 transition-colors bg-stone-50/80 backdrop-blur-sm border border-stone-200/50 shadow-lg"
+         className="p-3 rounded-xl hover:bg-amber-100/80 transition-colors bg-stone-50/80 backdrop-blur-sm border-2 border-stone-200/50 shadow-lg btn-mobile"
        >
-         <RefreshCw className="w-6 h-6 text-stone-600" />
+         <RefreshCw className="w-5 h-5 sm:w-6 sm:h-6 text-stone-600" />
        </button>
      </div>
 
      {/* Loading State */}
      {leaderboardLoading && (
-       <div className="bg-stone-50/80 backdrop-blur-sm rounded-2xl p-8 sm:p-12 border border-stone-200/50 text-center shadow-xl">
+       <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50 text-center">
          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-2xl">
            <LoadingSpinner size={8} color="text-white" />
          </div>
-         <h3 className="text-xl sm:text-2xl font-black text-stone-800 mb-4">🔄 Loading Leaderboard</h3>
+         <h3 className="text-mobile-xl sm:text-2xl font-black text-stone-800 mb-4">🔄 Loading Leaderboard</h3>
          <p className="text-stone-600">📊 Fetching the latest player data...</p>
        </div>
      )}
@@ -1615,7 +1582,7 @@ const QuizeloApp = () => {
      {!leaderboardLoading && leaderboardError && (
        <div className="bg-gradient-to-r from-red-100/80 to-orange-100/80 border border-red-200/60 rounded-2xl p-6 shadow-lg backdrop-blur-sm">
          <div className="flex items-center space-x-3">
-           <AlertCircle className="w-6 h-6 text-red-500 flex-shrink-0" />
+           <AlertCircle className="w-5 h-5 sm:w-6 sm:h-6 text-red-500 flex-shrink-0" />
            <p className="text-red-700 font-bold">❌ Failed to load leaderboard data</p>
          </div>
        </div>
@@ -1623,14 +1590,14 @@ const QuizeloApp = () => {
 
      {/* Connected Player Stats */}
      {isConnected && address && (
-       <div className="bg-stone-50/80 backdrop-blur-sm rounded-2xl p-6 border border-stone-200/50 shadow-xl w-[120%] -ml-[10%]">
+       <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50">
          <div className="flex items-center space-x-3 mb-4">
            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-xl flex items-center justify-center shadow-lg">
              <User className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
            </div>
            <div>
-             <h3 className="font-black text-stone-800 text-base sm:text-lg">📊 Your Stats</h3>
-             <p className="text-stone-600 text-sm">{formatAddress(address || '')}</p>
+             <h3 className="font-black text-stone-800 text-mobile-base sm:text-lg">📊 Your Stats</h3>
+             <p className="text-stone-600 text-mobile-sm">{formatAddress(address || '')}</p>
            </div>
          </div>
          
@@ -1646,16 +1613,16 @@ const QuizeloApp = () => {
                    { icon: Coins, label: "💰 Earnings", value: formatEarnings(playerStats.totalEarnings), color: "from-emerald-50/80 to-teal-50/80 border-emerald-200/60" },
                    { icon: Target, label: "🎯 Quizzes", value: playerStats.totalQuizzes, color: "from-blue-50/80 to-purple-50/80 border-blue-200/60" },
                    { icon: TrendingUp, label: "📈 Win Rate", value: formatWinRate(playerStats.winRate), color: "from-pink-50/80 to-red-50/80 border-pink-200/60" }
-                 ].map((stat, index) => (
+                 ].map((stat) => (
                    <div 
                      key={stat.label}
                      className={`bg-gradient-to-br ${stat.color} rounded-xl p-4 border backdrop-blur-sm shadow-md hover:shadow-lg transition-all`}
                    >
                      <div className="flex items-center space-x-2 mb-2">
                        <stat.icon className="w-4 h-4 text-amber-600" />
-                       <span className="text-sm font-bold text-stone-600">{stat.label}</span>
+                       <span className="text-mobile-xs font-bold text-stone-600">{stat.label}</span>
                      </div>
-                     <p className="text-2xl font-black text-stone-800">{stat.value}</p>
+                     <p className="text-mobile-xl sm:text-2xl font-black text-stone-800">{stat.value}</p>
                    </div>
                  ))}
                </div>
@@ -1664,90 +1631,11 @@ const QuizeloApp = () => {
              return (
                <div className="bg-gradient-to-br from-amber-50/80 to-orange-50/80 rounded-xl p-4 border border-amber-200/60 text-center shadow-md backdrop-blur-sm">
                  <p className="text-stone-800 font-bold">📊 No stats yet</p>
-                 <p className="text-stone-600 text-sm">Complete your first quiz to appear on the leaderboard! 🚀</p>
+                 <p className="text-stone-600 text-mobile-sm">Complete your first quiz to appear on the leaderboard! 🚀</p>
                </div>
              );
            }
          })()}
-       </div>
-     )}
-
-     {/* Global Stats */}
-     {stats && (
-       <div className="bg-stone-50/80 backdrop-blur-sm rounded-2xl p-6 border border-stone-200/50 shadow-xl w-[120%] -ml-[10%]">
-         <div className="flex items-center space-x-3 mb-4">
-           <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-emerald-400 via-teal-500 to-green-500 rounded-xl flex items-center justify-center shadow-lg">
-             <Trophy className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-           </div>
-           <h3 className="font-black text-stone-800 text-base sm:text-lg">🌍 Global Stats</h3>
-         </div>
-         
-         <div className="grid grid-cols-2 gap-4">
-           {[
-             { icon: Users, label: "👥 Players", value: stats.totalPlayers, color: "from-blue-50/80 to-purple-50/80 border-blue-200/60" },
-             { icon: Target, label: "🎯 Quizzes", value: stats.totalQuizzes, color: "from-green-50/80 to-emerald-50/80 border-green-200/60" },
-             { icon: Coins, label: "💰 Rewards", value: formatEarnings(stats.totalRewards), color: "from-amber-50/80 to-orange-50/80 border-amber-200/60" },
-             { icon: TrendingUp, label: "📊 Avg Win Rate", value: formatWinRate(stats.avgWinRate), color: "from-pink-50/80 to-red-50/80 border-pink-200/60" }
-           ].map((stat, index) => (
-             <div 
-               key={stat.label}
-               className={`bg-gradient-to-br ${stat.color} rounded-xl p-4 border backdrop-blur-sm shadow-md hover:shadow-lg transition-all`}
-             >
-               <div className="flex items-center space-x-2 mb-2">
-                 <stat.icon className="w-4 h-4 text-amber-600" />
-                 <span className="text-sm font-bold text-stone-600">{stat.label}</span>
-               </div>
-               <p className="text-2xl font-black text-stone-800">{stat.value}</p>
-             </div>
-           ))}
-         </div>
-       </div>
-     )}
-     
-     {/* Top Earners */}
-     {leaderboard.length > 0 && (
-       <div className="bg-stone-50/80 backdrop-blur-sm rounded-2xl p-6 border border-stone-200/50 shadow-xl w-[120%] -ml-[10%]">
-         <div className="flex items-center space-x-3 mb-4">
-           <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-xl flex items-center justify-center shadow-lg">
-             <Coins className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-           </div>
-           <h3 className="font-black text-stone-800 text-base sm:text-lg">💰 Top Earners</h3>
-         </div>
-         
-         <div className="space-y-3">
-           {getTopByEarnings(5).map((player, index) => (
-             <div 
-               key={player.address}
-               className="flex items-center justify-between p-4 bg-gradient-to-r from-amber-50/80 to-orange-50/80 rounded-xl border border-amber-200
-               /60 shadow-md hover:shadow-lg transition-all backdrop-blur-sm"
-             >
-               <div className="flex items-center space-x-4">
-                 <div className="w-8 h-8 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-full flex items-center justify-center">
-                   <span className="text-white font-bold text-sm">{index + 1}</span>
-                 </div>
-                 <div>
-                   <p className="font-black text-stone-800">{formatLeaderboardAddress(player.address)}</p>
-                   <p className="text-stone-600 text-sm">🎯 {player.totalQuizzes} quizzes</p>
-                 </div>
-               </div>
-               <div className="text-right">
-                 <p className="font-black text-stone-800">{formatEarnings(player.totalEarnings)}</p>
-                 <p className="text-stone-600 text-sm">📊 {formatWinRate(player.winRate)} win rate</p>
-               </div>
-             </div>
-           ))}
-         </div>
-       </div>
-     )}
-
-     {/* Empty State */}
-     {!leaderboardLoading && leaderboard.length === 0 && stats && (
-       <div className="bg-stone-50/80 backdrop-blur-sm rounded-2xl p-8 sm:p-12 border border-stone-200/50 text-center shadow-xl">
-         <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-2xl">
-           <Trophy className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
-         </div>
-         <h3 className="text-xl sm:text-2xl font-black text-stone-800 mb-4">🏆 No Players Yet</h3>
-         <p className="text-stone-600">Be the first to complete a quiz and claim the top spot! 🚀</p>
        </div>
      )}
    </div>
@@ -1755,26 +1643,26 @@ const QuizeloApp = () => {
  
  // Simplified Profile Content
  const ProfileContent = () => (
-   <div className="p-0 sm:p-6 pb-32 space-y-6 w-full">
+   <div className="space-y-4 w-full p-3">
      <div className="flex items-center justify-between">
-       <h2 className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-amber-700 via-orange-700 to-red-700 bg-clip-text text-transparent">
+       <h2 className="text-mobile-2xl sm:text-3xl font-black bg-gradient-to-r from-amber-700 via-orange-700 to-red-700 bg-clip-text text-transparent">
          👤 Player Profile
        </h2>
        <div className="relative">
          <button
            onClick={() => setShowProfileDropdown(!showProfileDropdown)}
-           className="p-3 rounded-xl hover:bg-amber-100/80 transition-colors shadow-lg bg-stone-50/80 backdrop-blur-sm border border-stone-200/50"
+           className="p-3 rounded-xl hover:bg-amber-100/80 transition-colors shadow-lg bg-stone-50/80 backdrop-blur-sm border-2 border-stone-200/50 btn-mobile"
          >
-           <Settings className="w-6 h-6 text-stone-600" />
+           <Settings className="w-5 h-5 sm:w-6 sm:h-6 text-stone-600" />
          </button>
          
          {showProfileDropdown && (
            <div className="absolute right-0 top-full mt-2 w-48 bg-stone-50/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-amber-200/60 py-2 z-10">
-             <button className="flex items-center w-full px-4 py-3 text-sm text-stone-700 hover:bg-amber-50/80 transition-colors">
+             <button className="flex items-center w-full px-4 py-3 text-sm text-stone-700 hover:bg-amber-50/80 transition-colors btn-mobile">
                <Settings className="w-4 h-4 mr-3" />
                ⚙️ Settings
              </button>
-             <button className="flex items-center w-full px-4 py-3 text-sm text-red-600 hover:bg-red-50/80 transition-colors">
+             <button className="flex items-center w-full px-4 py-3 text-sm text-red-600 hover:bg-red-50/80 transition-colors btn-mobile">
                <LogOut className="w-4 h-4 mr-3" />
                🔌 Disconnect
              </button>
@@ -1782,25 +1670,25 @@ const QuizeloApp = () => {
          )}
        </div>
      </div>
- 
+
      {isConnected ? (
-       <div className="space-y-6">
-         <div className="bg-stone-50/80 backdrop-blur-sm rounded-2xl p-6 sm:p-8 shadow-xl border border-stone-200/50 hover:shadow-2xl transition-all w-[120%] -ml-[10%]">
+       <div className="space-y-4">
+         <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50 hover:shadow-2xl transition-all">
            <div className="text-center">
              <div className="w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl">
                <User className="w-10 h-10 sm:w-12 sm:h-12 text-white" />
              </div>
-             <h3 className="font-black text-stone-800 text-xl sm:text-2xl mb-4">🎮 Connected Player</h3>
+             <h3 className="font-black text-stone-800 text-mobile-xl sm:text-2xl mb-4">🎮 Connected Player</h3>
              <div className="bg-gradient-to-r from-amber-50/80 to-orange-50/80 rounded-xl p-4 border border-amber-200/60 shadow-lg backdrop-blur-sm">
-               <p className="text-stone-600 text-sm font-bold mb-1">🔗 Wallet Address</p>
-               <p className="font-mono text-stone-800 font-bold text-sm sm:text-base">{formatAddress(address || '')}</p>
+               <p className="text-stone-600 text-mobile-sm font-bold mb-1">🔗 Wallet Address</p>
+               <p className="font-mono text-stone-800 font-bold text-mobile-sm">{formatAddress(address || '')}</p>
              </div>
            </div>
          </div>
 
          {quizelo.userInfo && (
-           <div className="bg-stone-50/80 backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-xl border border-stone-200/50 hover:shadow-2xl transition-all w-[120%] -ml-[10%]">
-             <h4 className="font-black text-stone-800 text-base sm:text-lg mb-4 flex items-center space-x-2">
+           <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50 hover:shadow-2xl transition-all">
+             <h4 className="font-black text-stone-800 text-mobile-base sm:text-lg mb-4 flex items-center space-x-2">
                <Trophy className="w-5 h-5 text-amber-600" />
                <span>📊 Player Stats</span>
              </h4>
@@ -1821,13 +1709,13 @@ const QuizeloApp = () => {
                    value: quizelo.userInfo?.canQuiz ? '🟢 Ready!' : '🔴 Wait',
                    color: quizelo.userInfo?.canQuiz ? "from-emerald-50/80 to-teal-50/80 border-emerald-200/60" : "from-red-50/80 to-orange-50/80 border-red-200/60"
                  }
-               ].map((stat, index) => (
+               ].map((stat) => (
                  <div 
                    key={stat.label}
                    className={`flex justify-between items-center p-4 bg-gradient-to-r ${stat.color} rounded-xl border backdrop-blur-sm shadow-lg hover:shadow-xl transition-all`}
                  >
-                   <span className="text-stone-600 font-bold text-sm sm:text-base">{stat.label}</span>
-                   <span className={`font-black text-sm sm:text-base ${
+                   <span className="text-stone-600 font-bold text-mobile-sm">{stat.label}</span>
+                   <span className={`font-black text-mobile-sm ${
                      stat.label.includes('Won today') 
                        ? (quizelo.userInfo?.wonToday ? 'text-emerald-700' : 'text-stone-500')
                        : stat.label.includes('Ready to play')
@@ -1842,8 +1730,8 @@ const QuizeloApp = () => {
                {/* Farcaster-specific stats */}
                {isMiniApp && isInFarcaster && context?.user?.fid && (
                  <div className="flex justify-between items-center p-4 bg-gradient-to-r from-purple-50/80 to-pink-50/80 rounded-xl border border-purple-200/60 shadow-lg backdrop-blur-sm hover:shadow-xl transition-all">
-                   <span className="text-stone-600 font-bold text-sm sm:text-base">🎭 Farcaster FID</span>
-                   <span className="font-black text-stone-800 text-sm sm:text-base">
+                   <span className="text-stone-600 font-bold text-mobile-sm">🎭 Farcaster FID</span>
+                   <span className="font-black text-stone-800 text-mobile-sm">
                      #{context.user.fid}
                    </span>
                  </div>
@@ -1854,7 +1742,7 @@ const QuizeloApp = () => {
                  <div className="flex items-center justify-center p-4 bg-gradient-to-r from-stone-50/80 to-gray-50/80 rounded-xl border border-stone-200/60 backdrop-blur-sm">
                    <div className="flex items-center space-x-3">
                      <LoadingSpinner size={5} color="text-stone-500" />
-                     <span className="text-stone-600 font-bold text-sm">🔄 Loading player data...</span>
+                     <span className="text-stone-600 font-bold text-mobile-sm">🔄 Loading player data...</span>
                    </div>
                  </div>
                )}
@@ -1863,18 +1751,18 @@ const QuizeloApp = () => {
          )}
        </div>
      ) : (
-       <div className="bg-stone-50/80 backdrop-blur-sm rounded-2xl p-8 sm:p-12 shadow-xl border border-stone-200/50 text-center hover:shadow-2xl transition-all">
+       <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50 text-center hover:shadow-2xl transition-all">
          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-stone-400 to-stone-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-2xl">
            <Wallet className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
          </div>
-         <h3 className="font-black text-stone-800 text-xl sm:text-2xl mb-4">🔌 No Player Connected</h3>
-         <p className="text-stone-600 mb-8 text-sm sm:text-base">Connect your wallet to join the adventure and start earning epic rewards! 🎮</p>
+         <h3 className="font-black text-stone-800 text-mobile-xl sm:text-2xl mb-4">🔌 No Player Connected</h3>
+         <p className="text-stone-600 mb-8 text-mobile-sm">Connect your wallet to join the adventure and start earning epic rewards! 🎮</p>
          <button
            onClick={() => {
              connect({ connector: injected() });
              setShowConnectWallet(false);
            }}
-           className="w-full bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 text-white py-3 sm:py-4 rounded-2xl font-bold hover:shadow-2xl transition-all mb-4"
+           className="w-full bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 text-white py-3 sm:py-4 rounded-2xl font-bold hover:shadow-2xl transition-all mb-4 btn-mobile"
          >
            🚀 Connect Wallet
          </button>
@@ -1901,7 +1789,7 @@ const QuizeloApp = () => {
        
        setIsSDKLoaded(true);
      } catch (error) {
-       console.error('Error loading SDK:', error);
+       console.error(error);
        // Still set as loaded to avoid infinite loading
        setIsSDKLoaded(true);
      }
@@ -1947,58 +1835,42 @@ const QuizeloApp = () => {
    }
  }, [isConnected, chainId, switchToCelo]);
 
- // Initialize app when SDK is loaded
+ // Initialize app when SDK is loaded - improved reactivity
  useEffect(() => {
    const initializeApp = async () => {
      try {
-       console.log('Initializing app...', { isSDKLoaded, isMiniApp, isInFarcaster, isConnected });
-       
        // Load initial data with better error handling
        const promises = [];
        
        // Only load quiz data if connected
        if (isConnected) {
          promises.push(
-           quizelo.refetchUserInfo().catch(err => {
-             console.error('Failed to fetch user info:', err);
-             return null;
-           })
+           quizelo.refetchUserInfo().catch(() => null)
          );
          
          promises.push(
-           quizelo.refetchContractStats().catch(err => {
-             console.error('Failed to fetch contract stats:', err);
-             return null;
-           })
+           quizelo.refetchContractStats().catch(() => null)
          );
          
          promises.push(
-           quizelo.refetchActiveQuizTakers().catch(err => {
-             console.error('Failed to fetch active quiz takers:', err);
-             return null;
-           })
+           quizelo.refetchActiveQuizTakers().catch(() => null)
          );
        }
        
        // Always load leaderboard data (this works in Farcaster)
-       promises.push(
-         Promise.resolve().then(() => {
-           console.log('Leaderboard data should be loaded by useLeaderboard hook');
-           return null;
-         })
-       );
+       promises.push(Promise.resolve());
        
        await Promise.all(promises);
-       console.log('App initialization complete');
      } catch (error) {
-       console.error('Error initializing app:', error);
+       console.error(error);
+       // Handle error silently
      }
    };
 
    if (isSDKLoaded) {
      initializeApp();
    }
- }, [isSDKLoaded, isConnected, quizelo, isMiniApp, isInFarcaster]);
+ }, [isSDKLoaded, isConnected, quizelo]);
  
  // Loading screen for SDK - SIMPLIFIED
  if (!isSDKLoaded) {
@@ -2019,7 +1891,7 @@ const QuizeloApp = () => {
  
  return (
    <div 
-     className="min-h-screen bg-gradient-to-br from-stone-100 via-amber-50 to-orange-100"
+     className="min-h-screen bg-gradient-to-br from-stone-100 via-amber-50 to-orange-100 mobile-safe-area"
      style={{
        paddingTop: context?.client?.safeAreaInsets?.top ?? 0,
        paddingBottom: context?.client?.safeAreaInsets?.bottom ?? 0,
@@ -2027,14 +1899,14 @@ const QuizeloApp = () => {
        paddingRight: context?.client?.safeAreaInsets?.right ?? 0,
      }}
    >
-     {/* Main Content - REMOVED ANIMATIONS */}
-     <div className="min-h-screen w-full px-2 sm:px-6 lg:px-8 pb-32 sm:pb-40">
+     {/* Main Content - Mobile-centered layout */}
+     <div className="min-h-screen w-full mobile-container pb-32 sm:pb-40">
        {showResults ? (
          <ResultsPage />
        ) : isInQuiz ? (
          <QuizInterface />
        ) : (
-         <div className="py-6 sm:py-8">
+         <div className="py-4 sm:py-6">
            {activeTab === 'home' && <HomeContent />}
            {activeTab === 'leaderboard' && <LeaderboardContent />}
            {activeTab === 'profile' && <ProfileContent />}
@@ -2042,20 +1914,16 @@ const QuizeloApp = () => {
        )}
      </div>
 
-     {/* Simplified Start Quiz FAB */}
+     {/* Mobile-optimized Start Quiz FAB */}
      {!isInQuiz && !showResults && (
        <button
-         onClick={() => {
-           console.log('FAB clicked! Setting showTopicModal to true');
-           setShowTopicModal(true);
-         }}
+         onClick={() => setShowTopicModal(true)}
          onTouchStart={(e) => {
            e.preventDefault();
-           console.log('FAB touch start! Setting showTopicModal to true');
            setShowTopicModal(true);
          }}
          disabled={quizelo.isLoading || aiLoading || (quizelo.userInfo ? !quizelo.userInfo.canQuiz : false)}
-         className="fixed bottom-32 sm:bottom-36 right-4 sm:right-6 w-16 h-16 sm:w-18 sm:h-18 bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 rounded-full shadow-2xl flex items-center justify-center hover:shadow-amber-300/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed z-50 border-4 border-white/80 touch-manipulation hover:scale-110"
+         className="fixed bottom-28 sm:bottom-32 right-4 sm:right-6 w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 rounded-full shadow-2xl flex items-center justify-center hover:shadow-amber-300/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed z-50 border-4 border-white/80 btn-mobile"
          title={quizelo.userInfo && !quizelo.userInfo.canQuiz ? "You've reached your daily quiz limit" : "Start a new quiz"}
          style={{
            zIndex: 9999,
@@ -2064,17 +1932,17 @@ const QuizeloApp = () => {
          }}
        >
          {quizelo.isLoading || aiLoading ? (
-           <LoadingSpinner size={7} color="text-white" />
+           <LoadingSpinner size={6} color="text-white" />
          ) : (
-           <Play className="w-7 h-7 sm:w-8 sm:h-8 text-white ml-1" />
+           <Play className="w-6 h-6 sm:w-7 sm:h-7 text-white ml-0.5" />
          )}
        </button>
      )}
 
-     {/* Simplified Bottom Navigation */}
+     {/* Mobile-optimized Bottom Navigation */}
      {!isInQuiz && !showResults && (
-       <div className="fixed bottom-0 left-0 right-0 bg-stone-50/95 backdrop-blur-lg border-t-2 border-amber-200/60 px-4 sm:px-6 py-4 z-20 shadow-2xl">
-         <div className="flex justify-around max-w-md mx-auto">
+       <div className="fixed bottom-0 left-0 right-0 bg-stone-50/95 backdrop-blur-lg border-t-2 border-amber-200/60 px-2 sm:px-4 py-3 sm:py-4 z-20 shadow-2xl mobile-safe-area">
+         <div className="flex justify-around max-w-sm mx-auto">
            {[
              { tab: 'home', icon: Home, label: '🏠 Home' },
              { tab: 'leaderboard', icon: Trophy, label: '🏆 Ranks' },
@@ -2083,13 +1951,13 @@ const QuizeloApp = () => {
              <button
                key={item.tab}
                onClick={() => setActiveTab(item.tab)}
-               className={`flex flex-col items-center space-y-2 py-3 px-4 rounded-2xl transition-all hover:scale-105 ${
+               className={`flex flex-col items-center space-y-1 sm:space-y-2 py-2 sm:py-3 px-2 sm:px-4 rounded-2xl transition-all hover:scale-105 btn-mobile ${
                  activeTab === item.tab 
                    ? 'bg-gradient-to-r from-amber-100/80 via-orange-100/80 to-red-100/80 text-amber-700 shadow-lg backdrop-blur-sm' 
                    : 'text-stone-500 hover:text-stone-700 hover:bg-stone-100/80'
                }`}
              >
-               <item.icon className="w-6 h-6" />
+               <item.icon className="w-5 h-5 sm:w-6 sm:h-6" />
                <span className="text-xs font-bold">{item.label}</span>
              </button>
            ))}
