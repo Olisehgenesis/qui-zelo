@@ -21,6 +21,7 @@ import {
 
   Target,
   TrendingUp,
+  Users,
   
 } from 'lucide-react';
 import { celo } from 'viem/chains';
@@ -57,6 +58,7 @@ interface QuizInfoModalProps {
   quizFee: string;
   potentialWinnings: string;
   isLoading: boolean;
+  selectedTopic: TopicWithMetadata | null;
 }
 
 interface QuizGenerationModalProps {
@@ -227,7 +229,8 @@ const QuizInfoModal = ({
   onStart, 
   quizFee, 
   potentialWinnings,
-  isLoading 
+  isLoading,
+  selectedTopic
 }: QuizInfoModalProps) => {
   if (!isVisible) return null;
 
@@ -255,6 +258,21 @@ const QuizInfoModal = ({
               🎮 Ready to Quest?
             </h3>
             
+            {/* Selected Topic Display */}
+            {selectedTopic && (
+              <div className="bg-gradient-to-r from-amber-50/80 to-orange-50/80 rounded-xl p-4 mb-4 border border-amber-200/60 backdrop-blur-sm">
+                <div className="flex items-center space-x-3">
+                  <div className="text-2xl bg-gradient-to-br from-amber-100 to-orange-100 w-10 h-10 rounded-xl flex items-center justify-center shadow-lg">
+                    {selectedTopic.icon}
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-bold text-stone-600">🎯 Selected Topic</p>
+                    <p className="font-black text-stone-800 text-sm">{selectedTopic.title}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            
             <div className="bg-gradient-to-r from-orange-50/80 to-red-50/80 rounded-xl p-4 mb-4 border border-orange-200/60 backdrop-blur-sm">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-bold text-stone-600">💰 Entry Fee</span>
@@ -274,7 +292,7 @@ const QuizInfoModal = ({
             <div className="space-y-3">
               <button
                 onClick={onStart}
-                disabled={isLoading}
+                disabled={isLoading || !selectedTopic}
                 className="w-full bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 text-white py-3 sm:py-4 rounded-2xl font-bold hover:shadow-2xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-3"
               >
                 {isLoading ? (
@@ -588,14 +606,16 @@ const QuizeloApp = () => {
   const { topics, selectedTopic, selectTopic } = useTopics();
   const { generateQuestions, loading: aiLoading, error: aiError, questions, markAnswer, calculateScore } = useAI();
   const { 
-  
+    leaderboard,
+    stats,
     isLoading: leaderboardLoading,
     error: leaderboardError,
     getPlayerRank,
     getPlayerStats,
+    getTopByEarnings,
     formatEarnings,
     formatWinRate,
-  
+    formatAddress: formatLeaderboardAddress
   } = useLeaderboard();
   const { switchChain } = useSwitchChain();
   const chainId = useChainId();
@@ -733,13 +753,11 @@ const QuizeloApp = () => {
     setShowQuizInfo(true);
   }, [selectTopic, isConnected, chainId, switchToCelo]);
 
-  const handleStartQuiz = useCallback(async () => {
-    setShowQuizInfo(false);
-    await startQuizFlow();
-  }, []);
-
-  const startQuizFlow = useCallback(async (topic = selectedTopic) => {
+  const startQuizFlow = useCallback(async (topic: TopicWithMetadata | null) => {
+    console.log('startQuizFlow called with topic:', topic);
+    
     if (!topic) {
+      console.error('No topic provided to startQuizFlow, showing topic modal');
       setShowTopicModal(true);
       return;
     }
@@ -785,7 +803,21 @@ const QuizeloApp = () => {
       console.error(error);
       setTransactionStatus('error');
     }
-  }, [selectedTopic, chainId, switchToCelo, quizelo, generateQuestions]);
+  }, [chainId, switchToCelo, quizelo, generateQuestions]);
+
+  const handleStartQuiz = useCallback(async () => {
+    console.log('handleStartQuiz called, selectedTopic:', selectedTopic);
+    
+    if (!selectedTopic) {
+      console.error('No topic selected, showing topic modal');
+      setShowQuizInfo(false);
+      setShowTopicModal(true);
+      return;
+    }
+    
+    setShowQuizInfo(false);
+    await startQuizFlow(selectedTopic);
+  }, [selectedTopic, startQuizFlow]);
 
   const handleContinueToNext = useCallback(() => {
     setShowQuestionResult(false);
@@ -1638,6 +1670,84 @@ const QuizeloApp = () => {
          })()}
        </div>
      )}
+
+     {/* Global Stats */}
+     {stats && (
+       <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50">
+         <div className="flex items-center space-x-3 mb-4">
+           <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-emerald-400 via-teal-500 to-green-500 rounded-xl flex items-center justify-center shadow-lg">
+             <Trophy className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+           </div>
+           <h3 className="font-black text-stone-800 text-mobile-base sm:text-lg">🌍 Global Stats</h3>
+         </div>
+         
+         <div className="grid grid-cols-2 gap-4">
+           {[
+             { icon: Users, label: "👥 Players", value: stats.totalPlayers, color: "from-blue-50/80 to-purple-50/80 border-blue-200/60" },
+             { icon: Target, label: "🎯 Quizzes", value: stats.totalQuizzes, color: "from-green-50/80 to-emerald-50/80 border-green-200/60" },
+             { icon: Coins, label: "💰 Rewards", value: formatEarnings(stats.totalRewards), color: "from-amber-50/80 to-orange-50/80 border-amber-200/60" },
+             { icon: TrendingUp, label: "📊 Avg Win Rate", value: formatWinRate(stats.avgWinRate), color: "from-pink-50/80 to-red-50/80 border-pink-200/60" }
+           ].map((stat) => (
+             <div 
+               key={stat.label}
+               className={`bg-gradient-to-br ${stat.color} rounded-xl p-4 border backdrop-blur-sm shadow-md hover:shadow-lg transition-all`}
+             >
+               <div className="flex items-center space-x-2 mb-2">
+                 <stat.icon className="w-4 h-4 text-amber-600" />
+                 <span className="text-mobile-xs font-bold text-stone-600">{stat.label}</span>
+               </div>
+               <p className="text-mobile-xl sm:text-2xl font-black text-stone-800">{stat.value}</p>
+             </div>
+           ))}
+         </div>
+       </div>
+     )}
+     
+     {/* Top Earners */}
+     {leaderboard.length > 0 && (
+       <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50">
+         <div className="flex items-center space-x-3 mb-4">
+           <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-xl flex items-center justify-center shadow-lg">
+             <Coins className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+           </div>
+           <h3 className="font-black text-stone-800 text-mobile-base sm:text-lg">💰 Top Earners</h3>
+         </div>
+         
+         <div className="space-y-3">
+           {getTopByEarnings(5).map((player, index) => (
+             <div 
+               key={player.address}
+               className="flex items-center justify-between p-4 bg-gradient-to-r from-amber-50/80 to-orange-50/80 rounded-xl border border-amber-200/60 shadow-md hover:shadow-lg transition-all backdrop-blur-sm"
+             >
+               <div className="flex items-center space-x-4">
+                 <div className="w-8 h-8 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-full flex items-center justify-center">
+                   <span className="text-white font-bold text-sm">{index + 1}</span>
+                 </div>
+                 <div>
+                   <p className="font-black text-stone-800">{formatLeaderboardAddress(player.address)}</p>
+                   <p className="text-stone-600 text-mobile-sm">🎯 {player.totalQuizzes} quizzes</p>
+                 </div>
+               </div>
+               <div className="text-right">
+                 <p className="font-black text-stone-800">{formatEarnings(player.totalEarnings)}</p>
+                 <p className="text-stone-600 text-mobile-sm">📊 {formatWinRate(player.winRate)} win rate</p>
+               </div>
+             </div>
+           ))}
+         </div>
+       </div>
+     )}
+
+     {/* Empty State */}
+     {!leaderboardLoading && leaderboard.length === 0 && stats && (
+       <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50 text-center">
+         <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-2xl">
+           <Trophy className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
+         </div>
+         <h3 className="text-mobile-xl sm:text-2xl font-black text-stone-800 mb-4">🏆 No Players Yet</h3>
+         <p className="text-stone-600">Be the first to complete a quiz and claim the top spot! 🚀</p>
+       </div>
+     )}
    </div>
  );
  
@@ -1842,23 +1952,27 @@ const QuizeloApp = () => {
        // Load initial data with better error handling
        const promises = [];
        
-       // Only load quiz data if connected
+       // Always load leaderboard data (this works in Farcaster and doesn't require connection)
+       promises.push(
+         // This will trigger leaderboard loading
+         Promise.resolve()
+       );
+       
+       // Load contract stats (public data, doesn't require connection)
+       promises.push(
+         quizelo.refetchContractStats().catch(() => null)
+       );
+       
+       // Only load user-specific data if connected
        if (isConnected) {
          promises.push(
            quizelo.refetchUserInfo().catch(() => null)
          );
          
          promises.push(
-           quizelo.refetchContractStats().catch(() => null)
-         );
-         
-         promises.push(
            quizelo.refetchActiveQuizTakers().catch(() => null)
          );
        }
-       
-       // Always load leaderboard data (this works in Farcaster)
-       promises.push(Promise.resolve());
        
        await Promise.all(promises);
      } catch (error) {
@@ -1869,6 +1983,25 @@ const QuizeloApp = () => {
 
    if (isSDKLoaded) {
      initializeApp();
+   }
+ }, [isSDKLoaded, isConnected, quizelo]);
+
+ // Additional effect to load data when connection status changes
+ useEffect(() => {
+   if (isSDKLoaded && isConnected) {
+     // Load user-specific data when connected
+     const loadUserData = async () => {
+       try {
+         await Promise.all([
+           quizelo.refetchUserInfo().catch(() => null),
+           quizelo.refetchActiveQuizTakers().catch(() => null)
+         ]);
+       } catch (error) {
+         console.error(error);
+       }
+     };
+     
+     loadUserData();
    }
  }, [isSDKLoaded, isConnected, quizelo]);
  
@@ -1917,14 +2050,42 @@ const QuizeloApp = () => {
      {/* Mobile-optimized Start Quiz FAB */}
      {!isInQuiz && !showResults && (
        <button
-         onClick={() => setShowTopicModal(true)}
+         onClick={() => {
+           if (selectedTopic) {
+             // If topic is selected, start quiz directly
+             if (!isConnected) {
+               setShowConnectWallet(true);
+             } else if (chainId !== celo.id) {
+               setShowNetworkModal(true);
+               switchToCelo();
+             } else {
+               setShowQuizInfo(true);
+             }
+           } else {
+             // If no topic selected, show topic modal
+             setShowTopicModal(true);
+           }
+         }}
          onTouchStart={(e) => {
            e.preventDefault();
-           setShowTopicModal(true);
+           if (selectedTopic) {
+             // If topic is selected, start quiz directly
+             if (!isConnected) {
+               setShowConnectWallet(true);
+             } else if (chainId !== celo.id) {
+               setShowNetworkModal(true);
+               switchToCelo();
+             } else {
+               setShowQuizInfo(true);
+             }
+           } else {
+             // If no topic selected, show topic modal
+             setShowTopicModal(true);
+           }
          }}
          disabled={quizelo.isLoading || aiLoading || (quizelo.userInfo ? !quizelo.userInfo.canQuiz : false)}
          className="fixed bottom-28 sm:bottom-32 right-4 sm:right-6 w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 rounded-full shadow-2xl flex items-center justify-center hover:shadow-amber-300/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed z-50 border-4 border-white/80 btn-mobile"
-         title={quizelo.userInfo && !quizelo.userInfo.canQuiz ? "You've reached your daily quiz limit" : "Start a new quiz"}
+         title={quizelo.userInfo && !quizelo.userInfo.canQuiz ? "You've reached your daily quiz limit" : selectedTopic ? "Start quiz" : "Select topic"}
          style={{
            zIndex: 9999,
            touchAction: 'manipulation',
@@ -1992,6 +2153,7 @@ const QuizeloApp = () => {
        quizFee={quizelo.quizFee && typeof quizelo.quizFee === 'bigint' ? quizelo.formatEther(quizelo.quizFee) : '0.1'}
        potentialWinnings={quizelo.quizFee && typeof quizelo.quizFee === 'bigint' ? quizelo.formatEther(quizelo.quizFee * 5n) : '0.5'}
        isLoading={quizelo.isLoading}
+       selectedTopic={selectedTopic}
      />}
    </div>
  );
