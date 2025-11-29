@@ -14,12 +14,55 @@
 
 body {
   color: var(--foreground);
-  background: var(--background);
+  background: #f7f7f7;
+  background-image: 
+    linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+  background-size: 2em 2em;
   font-family: 'Inter', Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
   position: relative;
+  min-height: 100vh;
+}
+
+/* Retro Theme Base Styles */
+.retro-card {
+  @apply relative bg-white border-[0.35em] border-[#050505] rounded-[0.6em] shadow-[0.7em_0.7em_0_#000000] transition-all overflow-hidden;
+  box-shadow: inset 0 0 0 0.15em rgba(0, 0, 0, 0.05);
+  transition-duration: 400ms;
+}
+
+.retro-card:hover {
+  @apply shadow-[1em_1em_0_#000000] -translate-x-[0.4em] -translate-y-[0.4em] scale-[1.02];
+}
+
+.retro-pattern-overlay {
+  @apply absolute inset-0 pointer-events-none opacity-0 transition-opacity z-[1];
+  background-image: linear-gradient(to right, rgba(0, 0, 0, 0.05) 1px, transparent 1px), 
+                    linear-gradient(to bottom, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+  background-size: 0.5em 0.5em;
+  transition-duration: 400ms;
+}
+
+.retro-card-group:hover .retro-pattern-overlay {
+  @apply opacity-50;
+}
+
+.retro-title-header {
+  @apply relative px-[1.4em] py-[1.4em] text-white font-extrabold flex justify-between items-center border-b-[0.35em] border-[#050505] uppercase tracking-[0.05em] z-[2];
+  background: #7C65C1;
+  background-image: repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.1) 0.5em, transparent 0.5em, transparent 1em);
+  background-blend-mode: overlay;
+}
+
+.retro-button {
+  @apply bg-[#7C65C1] hover:bg-[#6952A3] text-white py-3 px-6 rounded-[0.4em] font-bold border-[0.2em] border-[#050505] shadow-[0.3em_0.3em_0_#000000] hover:shadow-[0.4em_0.4em_0_#000000] hover:-translate-x-[0.1em] hover:-translate-y-[0.1em] active:translate-x-[0.1em] active:translate-y-[0.1em] active:shadow-[0.15em_0.15em_0_#000000] transition-all uppercase tracking-[0.05em];
+}
+
+.retro-info-box {
+  @apply p-4 bg-[#f7f7f7] border-[0.15em] border-[#050505] rounded-[0.4em] shadow-[0.2em_0.2em_0_#000000];
 }
 
 * {
@@ -129,5 +172,26 @@ html {
       opacity: 1;
       transform: translateY(0);
     }
+  }
+}
+
+/* Cool Play Button Animations */
+@keyframes playButtonPulse {
+  0%, 100% {
+    box-shadow: 0.4em 0.4em 0 #000000, 0 0 0 0 rgba(124, 101, 193, 0.7);
+  }
+  50% {
+    box-shadow: 0.4em 0.4em 0 #000000, 0 0 0 0.5rem rgba(124, 101, 193, 0);
+  }
+}
+
+@keyframes sparkle {
+  0%, 100% {
+    opacity: 0;
+    transform: scale(0);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
   }
 }

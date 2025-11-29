@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+
+/**// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -1067,6 +1073,412 @@ contract QuizeloV2 is Ownable, ReentrancyGuard {
                     topStreaksLeaderboard[j] = topStreaksLeaderboard[j + 1];
                     topStreaksLeaderboard[j + 1] = temp;
                 }
+            }
+        }
+    }
+}
+
+
+ * @title Quizelo
+ * @notice A quiz game contract where users pay a fee to take quizzes and can earn rewards based on their score
+ * @dev Uses Ownable for access control and ReentrancyGuard for security
+ */
+contract Quizelo is Ownable, ReentrancyGuard {
+    // ============ Constants ============
+    
+    /// @notice Fee required to start a quiz (in wei)
+    uint256 public constant QUIZ_FEE = 0.1 ether;
+    
+    /// @notice Duration of a quiz session in seconds
+    uint256 public constant QUIZ_DURATION = 900; // 15 minutes
+    
+    /// @notice Cooldown period between quizzes in seconds
+    uint256 public constant COOLDOWN_PERIOD = 3600; // 1 hour
+    
+    /// @notice Maximum number of quizzes a user can take per day
+    uint256 public constant MAX_DAILY_QUIZZES = 3;
+    
+    /// @notice Minimum contract balance required to operate quizzes
+    uint256 public constant MIN_CONTRACT_BALANCE = 1 ether;
+
+    // ============ Structs ============
+    
+    /// @notice Represents an active quiz session
+    struct QuizSession {
+        address user;           // User who started the quiz
+        uint256 startTime;      // Timestamp when quiz started
+        uint256 expiryTime;     // Timestamp when quiz expires
+        bool active;            // Whether the quiz is still active
+        bool claimed;           // Whether the reward has been claimed
+    }
+
+    /// @notice User information for daily quiz tracking
+    struct UserInfo {
+        uint256 dailyCount;     // Number of quizzes taken today
+        uint256 lastQuiz;       // Timestamp of last quiz
+        uint256 nextQuizTime;   // Timestamp when user can take next quiz
+        bool wonToday;          // Whether user won today
+        bool canQuiz;           // Whether user can take a quiz now
+    }
+
+    // ============ State Variables ============
+    
+    /// @notice Mapping from sessionId to QuizSession
+    mapping(bytes32 => QuizSession) public activeQuizzes;
+    
+    /// @notice Array of current active quiz session IDs
+    bytes32[] public currentQuizTakers;
+    
+    /// @notice Mapping from user address to daily quiz count
+    mapping(address => uint256) public dailyQuizCount;
+    
+    /// @notice Mapping from user address to last quiz timestamp
+    mapping(address => uint256) public lastQuizTime;
+    
+    /// @notice Mapping from user address to last reset day (for daily count reset)
+    mapping(address => uint256) public lastResetDay;
+    
+    /// @notice Mapping from user address to whether they won today
+    mapping(address => bool) public hasWonToday;
+    
+    /// @notice Nonce for generating unique session IDs
+    mapping(address => uint256) public userNonces;
+
+    // ============ Events ============
+    
+    /// @notice Emitted when a quiz is started
+    event QuizStarted(
+        bytes32 indexed sessionId,
+        address indexed user,
+        uint256 startTime
+    );
+    
+    /// @notice Emitted when a quiz is completed and reward is claimed
+    event QuizCompleted(
+        bytes32 indexed sessionId,
+        address indexed user,
+        uint256 score,
+        uint256 reward
+    );
+    
+    /// @notice Emitted when contract is topped up
+    event ContractToppedUp(uint256 amount);
+
+    // ============ Constructor ============
+    
+    constructor() Ownable(msg.sender) {}
+
+    // ============ Receive Function ============
+    
+    /// @notice Allows contract to receive ETH
+    receive() external payable {
+        emit ContractToppedUp(msg.value);
+    }
+
+    // ============ Main Functions ============
+    
+    /**
+     * @notice Start a new quiz session
+     * @dev Requires payment of QUIZ_FEE, checks daily limits and cooldown
+     */
+    function startQuiz() external payable nonReentrant {
+        require(msg.value == QUIZ_FEE, "Quizelo: Incorrect fee amount");
+        require(canOperateQuizzes(), "Quizelo: Contract balance too low");
+        
+        address user = msg.sender;
+        
+        // Reset daily count if it's a new day
+        _resetDailyCountIfNeeded(user);
+        
+        // Check if user can take quiz
+        UserInfo memory userInfo = getUserInfo(user);
+        require(userInfo.canQuiz, "Quizelo: Cannot take quiz now");
+        
+        // Generate unique session ID
+        bytes32 sessionId = keccak256(
+            abi.encodePacked(user, userNonces[user]++, block.timestamp, block.prevrandao)
+        );
+        
+        // Create quiz session
+        uint256 startTime = block.timestamp;
+        uint256 expiryTime = startTime + QUIZ_DURATION;
+        
+        activeQuizzes[sessionId] = QuizSession({
+            user: user,
+            startTime: startTime,
+            expiryTime: expiryTime,
+            active: true,
+            claimed: false
+        });
+        
+        // Add to current quiz takers
+        currentQuizTakers.push(sessionId);
+        
+        // Update user state
+        dailyQuizCount[user]++;
+        lastQuizTime[user] = startTime;
+        
+        emit QuizStarted(sessionId, user, startTime);
+    }
+    
+    /**
+     * @notice Claim reward for completing a quiz
+     * @param sessionId The session ID of the quiz
+     * @param score The score achieved (0-100)
+     */
+    function claimReward(bytes32 sessionId, uint256 score) external nonReentrant {
+        QuizSession storage session = activeQuizzes[sessionId];
+        
+        require(session.active, "Quizelo: Session not active");
+        require(!session.claimed, "Quizelo: Already claimed");
+        require(session.user == msg.sender, "Quizelo: Not your session");
+        require(block.timestamp <= session.expiryTime, "Quizelo: Session expired");
+        require(score <= 100, "Quizelo: Invalid score");
+        
+        // Calculate reward (only if score >= 60%)
+        uint256 reward = 0;
+        if (score >= 60) {
+            reward = calculatePotentialReward(msg.sender, score);
+            require(address(this).balance >= reward, "Quizelo: Insufficient contract balance");
+            
+            // Mark as won today
+            hasWonToday[msg.sender] = true;
+            
+            // Transfer reward
+            (bool success, ) = payable(msg.sender).call{value: reward}("");
+            require(success, "Quizelo: Reward transfer failed");
+        }
+        
+        // Mark session as claimed and inactive
+        session.claimed = true;
+        session.active = false;
+        
+        // Remove from current quiz takers
+        _removeFromCurrentTakers(sessionId);
+        
+        emit QuizCompleted(sessionId, msg.sender, score, reward);
+    }
+    
+    /**
+     * @notice Clean up an expired quiz session
+     * @param sessionId The session ID to clean up
+     */
+    function cleanupExpiredQuiz(bytes32 sessionId) external nonReentrant {
+        QuizSession storage session = activeQuizzes[sessionId];
+        
+        require(session.active, "Quizelo: Session not active");
+        require(block.timestamp > session.expiryTime, "Quizelo: Session not expired");
+        
+        // Mark as inactive
+        session.active = false;
+        
+        // Remove from current quiz takers
+        _removeFromCurrentTakers(sessionId);
+    }
+
+    // ============ View Functions ============
+    
+    /**
+     * @notice Get user information
+     * @param user The user address
+     * @return UserInfo struct with user's quiz status
+     */
+    function getUserInfo(address user) public view returns (UserInfo memory) {
+        uint256 currentTime = block.timestamp;
+        uint256 lastQuiz = lastQuizTime[user];
+        uint256 dailyCount = dailyQuizCount[user];
+        
+        // Reset daily count if needed (for view function)
+        if (_isNewDay(user)) {
+            dailyCount = 0;
+        }
+        
+        // Calculate next quiz time
+        uint256 nextQuizTime = 0;
+        if (lastQuiz > 0) {
+            nextQuizTime = lastQuiz + COOLDOWN_PERIOD;
+        }
+        
+        // Check if user can quiz
+        bool canQuiz = dailyCount < MAX_DAILY_QUIZZES && 
+                      (lastQuiz == 0 || currentTime >= nextQuizTime);
+        
+        return UserInfo({
+            dailyCount: dailyCount,
+            lastQuiz: lastQuiz,
+            nextQuizTime: nextQuizTime,
+            wonToday: hasWonToday[user],
+            canQuiz: canQuiz
+        });
+    }
+    
+    /**
+     * @notice Get contract statistics
+     * @return balance Current contract balance
+     * @return activeQuizCount Number of active quizzes
+     * @return minBalance Minimum required balance
+     * @return operational Whether contract can operate
+     */
+    function getContractStats() external view returns (
+        uint256 balance,
+        uint256 activeQuizCount,
+        uint256 minBalance,
+        bool operational
+    ) {
+        balance = address(this).balance;
+        activeQuizCount = currentQuizTakers.length;
+        minBalance = MIN_CONTRACT_BALANCE;
+        operational = canOperateQuizzes();
+    }
+    
+    /**
+     * @notice Get quiz session details
+     * @param sessionId The session ID
+     * @return user User address
+     * @return startTime Start timestamp
+     * @return expiryTime Expiry timestamp
+     * @return active Whether session is active
+     * @return claimed Whether reward was claimed
+     * @return timeRemaining Time remaining in seconds
+     */
+    function getQuizSession(bytes32 sessionId) external view returns (
+        address user,
+        uint256 startTime,
+        uint256 expiryTime,
+        bool active,
+        bool claimed,
+        uint256 timeRemaining
+    ) {
+        QuizSession memory session = activeQuizzes[sessionId];
+        user = session.user;
+        startTime = session.startTime;
+        expiryTime = session.expiryTime;
+        active = session.active;
+        claimed = session.claimed;
+        
+        if (active && block.timestamp < expiryTime) {
+            timeRemaining = expiryTime - block.timestamp;
+        } else {
+            timeRemaining = 0;
+        }
+    }
+    
+    /**
+     * @notice Get all current quiz takers' session IDs
+     * @return Array of session IDs
+     */
+    function getCurrentQuizTakers() external view returns (bytes32[] memory) {
+        return currentQuizTakers;
+    }
+    
+    /**
+     * @notice Calculate potential reward for a score
+     * @param user The user address
+     * @param score The score (0-100)
+     * @return reward The reward amount in wei
+     */
+    function calculatePotentialReward(address user, uint256 score) public view returns (uint256) {
+        if (score < 60) {
+            return 0;
+        }
+        
+        // Base reward is 5x the quiz fee for passing (60%+)
+        uint256 baseReward = QUIZ_FEE * 5;
+        
+        // Bonus for higher scores
+        if (score >= 90) {
+            return baseReward * 2; // 10x for 90%+
+        } else if (score >= 80) {
+            return baseReward * 3 / 2; // 7.5x for 80%+
+        } else if (score >= 70) {
+            return baseReward * 6 / 5; // 6x for 70%+
+        }
+        
+        return baseReward; // 5x for 60%+
+    }
+    
+    /**
+     * @notice Check if contract can operate quizzes
+     * @return true if balance is above minimum
+     */
+    function canOperateQuizzes() public view returns (bool) {
+        return address(this).balance >= MIN_CONTRACT_BALANCE;
+    }
+
+    // ============ Admin Functions ============
+    
+    /**
+     * @notice Top up contract balance
+     * @dev Anyone can top up, but typically called by owner
+     */
+    function topUpContract() external payable {
+        require(msg.value > 0, "Quizelo: Must send ETH");
+        emit ContractToppedUp(msg.value);
+    }
+    
+    /**
+     * @notice Admin function to cleanup all expired quizzes
+     */
+    function adminCleanupExpired() external onlyOwner nonReentrant {
+        uint256 length = currentQuizTakers.length;
+        for (uint256 i = 0; i < length; ) {
+            bytes32 sessionId = currentQuizTakers[i];
+            QuizSession storage session = activeQuizzes[sessionId];
+            
+            if (session.active && block.timestamp > session.expiryTime) {
+                session.active = false;
+                _removeFromCurrentTakers(sessionId);
+                length--;
+            } else {
+                i++;
+            }
+        }
+    }
+    
+    /**
+     * @notice Emergency drain function (owner only)
+     * @dev Drains all contract balance to owner
+     */
+    function adminEmergencyDrain() external onlyOwner nonReentrant {
+        uint256 balance = address(this).balance;
+        require(balance > 0, "Quizelo: No balance to drain");
+        
+        (bool success, ) = payable(owner()).call{value: balance}("");
+        require(success, "Quizelo: Drain failed");
+    }
+
+    // ============ Internal Functions ============
+    
+    /**
+     * @notice Reset daily count if it's a new day
+     */
+    function _resetDailyCountIfNeeded(address user) internal {
+        if (_isNewDay(user)) {
+            dailyQuizCount[user] = 0;
+            hasWonToday[user] = false;
+            lastResetDay[user] = block.timestamp / 1 days;
+        }
+    }
+    
+    /**
+     * @notice Check if it's a new day for the user
+     */
+    function _isNewDay(address user) internal view returns (bool) {
+        uint256 currentDay = block.timestamp / 1 days;
+        uint256 lastDay = lastResetDay[user];
+        return currentDay > lastDay;
+    }
+    
+    /**
+     * @notice Remove session ID from current quiz takers array
+     */
+    function _removeFromCurrentTakers(bytes32 sessionId) internal {
+        uint256 length = currentQuizTakers.length;
+        for (uint256 i = 0; i < length; i++) {
+            if (currentQuizTakers[i] == sessionId) {
+                currentQuizTakers[i] = currentQuizTakers[length - 1];
+                currentQuizTakers.pop();
+                break;
             }
         }
     }

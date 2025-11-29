@@ -1,24 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
-import { usePublicClient } from 'wagmi';
+import { usePublicClient, useAccount, Address } from 'wagmi';
 import { celo, celoAlfajores } from 'viem/chains';
+import { useQuizelo } from './useQuizelo';
 
-const QUIZELO_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_QUIZELO_CONTRACT_ADDRESS as `0x${string}`;
 const env = process.env.NEXT_PUBLIC_ENV;
 
 interface LeaderboardEntry {
-  address: string;
-  totalQuizzes: number;
-  totalWins: number;
-  totalEarnings: bigint;
-  winRate: number;
-  rank: number;
-  displayName: string;
+  user: string;
+  score: bigint;
+  timestamp: number;
+  rank?: number;
 }
 
 interface LeaderboardStats {
   totalPlayers: number;
   totalQuizzes: number;
   totalRewards: bigint;
+  totalFees: bigint;
   avgWinRate: number;
 }
 
@@ -26,167 +24,127 @@ export const useLeaderboard = () => {
   const publicClient = usePublicClient({ 
     chainId: env === 'dev' ? celoAlfajores.id : celo.id 
   });
+  const { address } = useAccount();
+  const quizelo = useQuizelo();
 
   // State
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [topScores, setTopScores] = useState<LeaderboardEntry[]>([]);
+  const [topEarners, setTopEarners] = useState<LeaderboardEntry[]>([]);
+  const [topStreaks, setTopStreaks] = useState<LeaderboardEntry[]>([]);
   const [stats, setStats] = useState<LeaderboardStats | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [activeTab, setActiveTab] = useState<'scores' | 'earners' | 'streaks'>('scores');
 
-  // Get events from contract to build leaderboard
+  // Fetch all leaderboard data from contract
   const fetchLeaderboardData = useCallback(async () => {
-    if (!publicClient) return;
+    if (!quizelo.getTopScoresLeaderboard || !quizelo.getTopEarnersLeaderboard || !quizelo.getTopStreaksLeaderboard) {
+      return;
+    }
 
     setIsLoading(true);
     setError('');
 
     try {
-      // Get all QuizStarted and QuizCompleted events
-      const currentBlock = await publicClient.getBlockNumber();
-      const fromBlock = currentBlock - 100000n; // Last ~100k blocks
+      // Fetch all three leaderboards
+      const [scores, earners, streaks, globalStats] = await Promise.all([
+        quizelo.getTopScoresLeaderboard(100),
+        quizelo.getTopEarnersLeaderboard(100),
+        quizelo.getTopStreaksLeaderboard(100),
+        quizelo.getGlobalStats()
+      ]);
 
-      // Fetch QuizStarted events
-      const quizStartedLogs = await publicClient.getLogs({
-        address: QUIZELO_CONTRACT_ADDRESS,
-        event: {
-          name: 'QuizStarted',
-          type: 'event',
-          inputs: [
-            { name: 'sessionId', type: 'bytes32', indexed: true },
-            { name: 'user', type: 'address', indexed: true },
-            { name: 'startTime', type: 'uint256', indexed: false }
-          ]
-        },
-        fromBlock,
-        toBlock: 'latest'
-      });
+      // Add ranks to entries
+      const scoresWithRanks = scores.map((entry, index) => ({ ...entry, rank: index + 1 }));
+      const earnersWithRanks = earners.map((entry, index) => ({ ...entry, rank: index + 1 }));
+      const streaksWithRanks = streaks.map((entry, index) => ({ ...entry, rank: index + 1 }));
 
-      // Fetch QuizCompleted events
-      const quizCompletedLogs = await publicClient.getLogs({
-        address: QUIZELO_CONTRACT_ADDRESS,
-        event: {
-          name: 'QuizCompleted',
-          type: 'event',
-          inputs: [
-            { name: 'sessionId', type: 'bytes32', indexed: true },
-            { name: 'user', type: 'address', indexed: true },
-            { name: 'score', type: 'uint256', indexed: false },
-            { name: 'reward', type: 'uint256', indexed: false }
-          ]
-        },
-        fromBlock,
-        toBlock: 'latest'
-      });
+      setTopScores(scoresWithRanks);
+      setTopEarners(earnersWithRanks);
+      setTopStreaks(streaksWithRanks);
 
-      // Process data
-      const playerData = new Map<string, {
-        totalQuizzes: number;
-        totalWins: number;
-        totalEarnings: bigint;
-      }>();
+      // Calculate stats from global stats
+      if (globalStats) {
+        setStats({
+          totalPlayers: globalStats.totalUsers,
+          totalQuizzes: globalStats.totalQuizzes,
+          totalRewards: globalStats.totalRewards,
+          totalFees: globalStats.totalFees,
+          avgWinRate: globalStats.averageScore // Using average score as proxy for win rate
+        });
+      }
 
-      // Count quiz starts
-      quizStartedLogs.forEach(log => {
-        const user = log.args.user as string;
-        if (!playerData.has(user)) {
-          playerData.set(user, { totalQuizzes: 0, totalWins: 0, totalEarnings: 0n });
-        }
-        playerData.get(user)!.totalQuizzes++;
-      });
-
-      // Count wins and earnings
-      quizCompletedLogs.forEach(log => {
-        const user = log.args.user as string;
-        const score = log.args.score as bigint;
-        const reward = log.args.reward as bigint;
-
-        if (playerData.has(user)) {
-          const data = playerData.get(user)!;
-          if (Number(score) >= 60) {
-            data.totalWins++;
-          }
-          data.totalEarnings += reward;
-        }
-      });
-
-      // Convert to leaderboard entries
-      const entries: LeaderboardEntry[] = Array.from(playerData.entries())
-        .map(([address, data]) => ({
-          address,
-          totalQuizzes: data.totalQuizzes,
-          totalWins: data.totalWins,
-          totalEarnings: data.totalEarnings,
-          winRate: data.totalQuizzes > 0 ? (data.totalWins / data.totalQuizzes) * 100 : 0,
-          rank: 0,
-          displayName: `${address.slice(0, 6)}...${address.slice(-4)}`
-        }))
-        .filter(entry => entry.totalQuizzes > 0)
-        .sort((a, b) => {
-          // Sort by total earnings first, then by win rate
-          if (a.totalEarnings !== b.totalEarnings) {
-            return Number(b.totalEarnings - a.totalEarnings);
-          }
-          return b.winRate - a.winRate;
-        })
-        .slice(0, 100) // Top 100
-        .map((entry, index) => ({ ...entry, rank: index + 1 }));
-
-      // Calculate stats
-      const totalPlayers = entries.length;
-      const totalQuizzes = entries.reduce((sum, entry) => sum + entry.totalQuizzes, 0);
-      const totalRewards = entries.reduce((sum, entry) => sum + entry.totalEarnings, 0n);
-      const avgWinRate = totalPlayers > 0 
-        ? entries.reduce((sum, entry) => sum + entry.winRate, 0) / totalPlayers 
-        : 0;
-
-      setLeaderboard(entries);
-      setStats({
-        totalPlayers,
-        totalQuizzes,
-        totalRewards,
-        avgWinRate
-      });
       setLastUpdated(new Date());
-
     } catch (err) {
       console.error('Failed to fetch leaderboard data:', err);
       setError('Failed to load leaderboard data');
     } finally {
       setIsLoading(false);
     }
-  }, [publicClient]);
+  }, [quizelo]);
 
-  // Get player rank
-  const getPlayerRank = useCallback((address: string): number => {
-    const player = leaderboard.find(p => p.address.toLowerCase() === address.toLowerCase());
+  // Get current leaderboard based on active tab
+  const getCurrentLeaderboard = useCallback((): LeaderboardEntry[] => {
+    switch (activeTab) {
+      case 'scores':
+        return topScores;
+      case 'earners':
+        return topEarners;
+      case 'streaks':
+        return topStreaks;
+      default:
+        return topScores;
+    }
+  }, [activeTab, topScores, topEarners, topStreaks]);
+
+  // Get player rank in current leaderboard
+  const getPlayerRank = useCallback((userAddress: string): number => {
+    const currentLeaderboard = getCurrentLeaderboard();
+    const player = currentLeaderboard.find(p => p.user.toLowerCase() === userAddress.toLowerCase());
     return player?.rank || 0;
-  }, [leaderboard]);
+  }, [getCurrentLeaderboard]);
 
-  // Get player stats
-  const getPlayerStats = useCallback((address: string): LeaderboardEntry | null => {
-    return leaderboard.find(p => p.address.toLowerCase() === address.toLowerCase()) || null;
-  }, [leaderboard]);
+  // Get player stats from current leaderboard
+  const getPlayerStats = useCallback((userAddress: string): LeaderboardEntry | null => {
+    const currentLeaderboard = getCurrentLeaderboard();
+    return currentLeaderboard.find(p => p.user.toLowerCase() === userAddress.toLowerCase()) || null;
+  }, [getCurrentLeaderboard]);
 
-  // Get top players by category
+  // Get user's ranks across all leaderboards
+  const getUserRanks = useCallback(async (userAddress: Address): Promise<{
+    scoreRank: number;
+    earnerRank: number;
+    streakRank: number;
+  }> => {
+    try {
+      const [scoreRank, earnerRank, streakRank] = await Promise.all([
+        quizelo.getUserScoreRank(userAddress),
+        quizelo.getUserEarnerRank(userAddress),
+        quizelo.getUserStreakRank(userAddress)
+      ]);
+
+      return { scoreRank, earnerRank, streakRank };
+    } catch (err) {
+      console.error('Failed to get user ranks:', err);
+      return { scoreRank: 0, earnerRank: 0, streakRank: 0 };
+    }
+  }, [quizelo]);
+
+  // Get top players by category (for backward compatibility)
   const getTopByEarnings = useCallback((limit = 10) => {
-    return [...leaderboard]
-      .sort((a, b) => Number(b.totalEarnings - a.totalEarnings))
-      .slice(0, limit);
-  }, [leaderboard]);
+    return topEarners.slice(0, limit);
+  }, [topEarners]);
 
   const getTopByWinRate = useCallback((limit = 10) => {
-    return [...leaderboard]
-      .filter(p => p.totalQuizzes >= 5) // At least 5 quizzes for meaningful win rate
-      .sort((a, b) => b.winRate - a.winRate)
-      .slice(0, limit);
-  }, [leaderboard]);
+    // Win rate not directly available, use scores as proxy
+    return topScores.slice(0, limit);
+  }, [topScores]);
 
   const getTopByQuizzes = useCallback((limit = 10) => {
-    return [...leaderboard]
-      .sort((a, b) => b.totalQuizzes - a.totalQuizzes)
-      .slice(0, limit);
-  }, [leaderboard]);
+    // Total quizzes not directly available, use earners as proxy
+    return topEarners.slice(0, limit);
+  }, [topEarners]);
 
   // Auto-refresh data
   useEffect(() => {
@@ -202,9 +160,17 @@ export const useLeaderboard = () => {
   // Format functions
   const formatEarnings = useCallback((earnings: bigint): string => {
     const eth = Number(earnings) / 1e18;
-    if (eth >= 1) return `${eth.toFixed(2)} CELO`;
-    if (eth >= 0.01) return `${eth.toFixed(3)} CELO`;
-    return `${eth.toFixed(4)} CELO`;
+    if (eth >= 1) return `${eth.toFixed(2)}`;
+    if (eth >= 0.01) return `${eth.toFixed(3)}`;
+    return `${eth.toFixed(4)}`;
+  }, []);
+
+  const formatScore = useCallback((score: bigint): string => {
+    return `${Number(score)}%`;
+  }, []);
+
+  const formatStreak = useCallback((streak: bigint): string => {
+    return `${Number(streak)} 🔥`;
   }, []);
 
   const formatWinRate = useCallback((winRate: number): string => {
@@ -217,28 +183,37 @@ export const useLeaderboard = () => {
 
   return {
     // Data
-    leaderboard,
+    topScores,
+    topEarners,
+    topStreaks,
+    leaderboard: getCurrentLeaderboard(), // For backward compatibility
     stats,
     isLoading,
     error,
     lastUpdated,
+    activeTab,
+    setActiveTab,
 
     // Functions
     fetchLeaderboardData,
     getPlayerRank,
     getPlayerStats,
+    getUserRanks,
     getTopByEarnings,
     getTopByWinRate,
     getTopByQuizzes,
+    getCurrentLeaderboard,
 
     // Formatters
     formatEarnings,
+    formatScore,
+    formatStreak,
     formatWinRate,
     formatAddress,
 
     // Computed values
-    hasData: leaderboard.length > 0,
-    isEmpty: !isLoading && leaderboard.length === 0,
+    hasData: topScores.length > 0 || topEarners.length > 0 || topStreaks.length > 0,
+    isEmpty: !isLoading && topScores.length === 0 && topEarners.length === 0 && topStreaks.length === 0,
     isStale: lastUpdated ? Date.now() - lastUpdated.getTime() > 300000 : false // 5 minutes
   };
 };

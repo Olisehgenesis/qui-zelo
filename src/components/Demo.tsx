@@ -36,6 +36,9 @@ import { useTopics, TopicWithMetadata } from '../hooks/useTopics';
 import { useAI } from '../hooks/useAI';
 import { useLeaderboard } from '../hooks/useLeaderboard';
 import farcasterFrame from '@farcaster/frame-wagmi-connector';
+import { HomeContent } from './pages/HomeContent';
+import { LeaderboardContent } from './pages/LeaderboardContent';
+import { ProfileContent } from './pages/ProfileContent';
 
 interface ScoreResult {
   percentage: number;
@@ -194,10 +197,10 @@ const QuestionResult = ({ result, correctAnswer, userAnswer, onContinue, isLastQ
             
             <button
               onClick={onContinue}
-              className={`w-full py-4 rounded-2xl font-bold text-white text-lg transition-all shadow-lg hover:shadow-xl ${
+              className={`w-full py-4 rounded-[0.4em] font-bold text-white text-lg transition-all border-[0.2em] border-[#050505] ${
                 result.isCorrect
-                  ? 'bg-gradient-to-r from-emerald-500 via-teal-500 to-green-500 hover:shadow-emerald-300/50'
-                  : 'bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 hover:shadow-orange-300/50'
+                  ? 'bg-[#10b981] hover:bg-[#059669] shadow-[0.3em_0.3em_0_#000000] hover:shadow-[0.4em_0.4em_0_#000000] hover:-translate-x-[0.1em] hover:-translate-y-[0.1em] active:translate-x-[0.1em] active:translate-y-[0.1em] active:shadow-[0.15em_0.15em_0_#000000]'
+                  : 'bg-[#f59e0b] hover:bg-[#d97706] shadow-[0.3em_0.3em_0_#000000] hover:shadow-[0.4em_0.4em_0_#000000] hover:-translate-x-[0.1em] hover:-translate-y-[0.1em] active:translate-x-[0.1em] active:translate-y-[0.1em] active:shadow-[0.15em_0.15em_0_#000000]'
               }`}
             >
               <div className="flex items-center justify-center space-x-2">
@@ -276,7 +279,7 @@ const QuizInfoModal = ({
               <button
                 onClick={onStart}
                 disabled={isLoading}
-                className="w-full bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 text-white py-3 sm:py-4 rounded-2xl font-bold hover:shadow-2xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-3"
+                className="w-full bg-[#7C65C1] hover:bg-[#6952A3] text-white py-3 sm:py-4 rounded-[0.4em] font-bold border-[0.2em] border-[#050505] shadow-[0.3em_0.3em_0_#000000] hover:shadow-[0.4em_0.4em_0_#000000] hover:-translate-x-[0.1em] hover:-translate-y-[0.1em] active:translate-x-[0.1em] active:translate-y-[0.1em] active:shadow-[0.15em_0.15em_0_#000000] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-[0.3em_0.3em_0_#000000] flex items-center justify-center space-x-3 uppercase tracking-[0.05em]"
               >
                 {isLoading ? (
                   <LoadingSpinner size={6} color="text-white" />
@@ -766,7 +769,9 @@ const QuizeloApp = () => {
       setShowTransactionModal(true);
       setTransactionStatus('pending');
       
-      const result = await quizelo.startQuiz();
+      // Use selected token or first supported token
+      const tokenToUse = quizelo.selectedToken || (quizelo.supportedTokens.length > 0 ? quizelo.supportedTokens[0] : null);
+      const result = await quizelo.startQuiz(tokenToUse || undefined);
       setCurrentTxHash(quizelo.txHash || '');
       
       if (result.success) {
@@ -864,85 +869,98 @@ const QuizeloApp = () => {
       return 'KEEP GOING! 💪';
     };
 
+    const getScoreBgColor = (percentage: number) => {
+      if (percentage >= 80) return '#7C65C1';
+      if (percentage >= 60) return '#10b981';
+      return '#6b7280';
+    };
+
     return (
-      <div className="fixed inset-0 bg-gradient-to-br from-stone-100 via-amber-50 to-orange-100 overflow-y-auto">
+      <div className="fixed inset-0 bg-[#f7f7f7] overflow-y-auto">
         <div className="min-h-screen p-4 sm:p-6">
-          <div className="max-w-lg mx-auto">
-            {/* Celebration Header */}
-            <div className="text-center mb-6 sm:mb-8 relative">
-              <div className={`relative w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-r ${getScoreColor(finalScore.percentage)} rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 shadow-2xl`}>
-                <span className="text-3xl sm:text-4xl">{getScoreEmoji(finalScore.percentage)}</span>
-              </div>
-              
-              <h1 className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-amber-700 via-orange-700 to-red-700 bg-clip-text text-transparent mb-2">
-                🎊 Quest Complete!
-              </h1>
-              
-              <p className="text-stone-600 text-sm sm:text-base">
-                🎉 Check out your epic results!
-              </p>
-            </div>
-
-            {/* Score Card */}
-            <div className="bg-stone-50/80 backdrop-blur-xl rounded-3xl p-6 sm:p-8 shadow-2xl border-2 border-stone-200/50 mb-6 relative overflow-hidden">
-              <div className="relative text-center">
-                <div className={`text-5xl sm:text-7xl font-black mb-3 bg-gradient-to-r ${getScoreColor(finalScore.percentage)} bg-clip-text text-transparent`}>
-                  {finalScore.percentage}%
+          <div className="max-w-lg mx-auto space-y-4">
+            {/* Celebration Header - Retro Theme */}
+            <div className="retro-card-group relative">
+              <div className="retro-pattern-overlay" />
+              <div className="retro-card bg-white p-6 sm:p-8 text-center relative z-[2]">
+                <div className={`w-20 h-20 sm:w-24 sm:h-24 rounded-[0.4em] border-[0.2em] border-[#050505] shadow-[0.3em_0.3em_0_#000000] flex items-center justify-center mx-auto mb-4 sm:mb-6`} style={{ backgroundColor: getScoreBgColor(finalScore.percentage) }}>
+                  <span className="text-3xl sm:text-4xl">{getScoreEmoji(finalScore.percentage)}</span>
                 </div>
                 
-                <p className="text-xl sm:text-2xl font-black text-stone-800 mb-2">
-                  {getScoreMessage(finalScore.percentage)}
+                <h1 className="text-2xl sm:text-3xl font-black text-[#050505] mb-2">
+                  🎊 Quest Complete!
+                </h1>
+                
+                <p className="text-[#6b7280] text-sm sm:text-base font-semibold">
+                  🎉 Check out your epic results!
                 </p>
-                
-                <div className="flex items-center justify-center space-x-2 text-stone-600">
-                  <Target className="w-4 h-4" />
-                  <span className="text-sm sm:text-base">
-                    🎯 {finalScore.correct} out of {finalScore.total} correct
-                  </span>
+              </div>
+            </div>
+
+            {/* Score Card - Retro Theme */}
+            <div className="retro-card-group relative">
+              <div className="retro-pattern-overlay" />
+              <div className="retro-card bg-white p-6 sm:p-8 relative z-[2]">
+                <div className="text-center">
+                  <div className={`text-5xl sm:text-7xl font-black mb-3`} style={{ color: getScoreBgColor(finalScore.percentage) }}>
+                    {finalScore.percentage}%
+                  </div>
+                  
+                  <p className="text-xl sm:text-2xl font-black text-[#050505] mb-2">
+                    {getScoreMessage(finalScore.percentage)}
+                  </p>
+                  
+                  <div className="flex items-center justify-center space-x-2 text-[#6b7280]">
+                    <Target className="w-4 h-4 text-[#050505]" />
+                    <span className="text-sm sm:text-base font-semibold">
+                      🎯 {finalScore.correct} out of {finalScore.total} correct
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Topic Badge */}
-            <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 sm:p-6 shadow-xl border border-stone-200/50 mb-6">
-              <div className="flex items-center space-x-3 sm:space-x-4">
-                <div className="text-3xl sm:text-4xl bg-gradient-to-br from-amber-100 to-orange-100 w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center shadow-lg">
-                  {selectedTopic?.icon}
-                </div>
-                <div>
-                  <h3 className="font-black text-stone-800 text-base sm:text-lg">✨ {selectedTopic?.title}</h3>
-                  <p className="text-stone-600 text-sm sm:text-base">{selectedTopic?.description}</p>
+            {/* Topic Badge - Retro Theme */}
+            <div className="retro-card-group relative">
+              <div className="retro-pattern-overlay" />
+              <div className="retro-card bg-white p-4 sm:p-6 relative z-[2]">
+                <div className="flex items-center space-x-3 sm:space-x-4">
+                  <div className="text-3xl sm:text-4xl bg-[#7C65C1] w-14 h-14 sm:w-16 sm:h-16 rounded-[0.4em] border-[0.2em] border-[#050505] shadow-[0.3em_0.3em_0_#000000] flex items-center justify-center">
+                    {selectedTopic?.icon}
+                  </div>
+                  <div>
+                    <h3 className="font-black text-[#050505] text-base sm:text-lg">✨ {selectedTopic?.title}</h3>
+                    <p className="text-[#6b7280] text-sm sm:text-base font-semibold">{selectedTopic?.description}</p>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Action Buttons */}
+            {/* Action Buttons - Retro Theme */}
             <div className="space-y-4">
               {finalScore?.percentage >= 60 && (
                 <button
                   onClick={handleClaimReward}
                   disabled={quizelo.isLoading}
-                  className="w-full bg-gradient-to-r from-emerald-500 via-teal-500 to-green-500 text-white py-4 rounded-2xl font-bold text-lg hover:shadow-2xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-3 relative overflow-hidden"
+                  className="w-full bg-[#10b981] hover:bg-[#059669] text-white py-4 rounded-[0.4em] font-bold text-lg border-[0.2em] border-[#050505] shadow-[0.3em_0.3em_0_#000000] hover:shadow-[0.4em_0.4em_0_#000000] hover:-translate-x-[0.1em] hover:-translate-y-[0.1em] active:translate-x-[0.1em] active:translate-y-[0.1em] active:shadow-[0.15em_0.15em_0_#000000] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-[0.3em_0.3em_0_#000000] flex items-center justify-center space-x-3 uppercase tracking-[0.05em]"
                 >
-                  <div className="relative flex items-center space-x-3">
-                    {quizelo.isLoading ? (
-                      <LoadingSpinner size={6} color="text-white" />
-                    ) : (
-                      <>
-                        <Coins className="w-6 h-6" />
-                        <span>🎁 Claim Your Reward!</span>
-                      </>
-                    )}
-                  </div>
+                  {quizelo.isLoading ? (
+                    <LoadingSpinner size={6} color="text-white" />
+                  ) : (
+                    <>
+                      <Coins className="w-6 h-6 text-white" />
+                      <span className="text-white">🎁 Claim Your Reward!</span>
+                    </>
+                  )}
                 </button>
               )}
               
               <button
                 onClick={handleRetakeQuiz}
-                className="w-full bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 text-white py-4 rounded-2xl font-bold hover:shadow-xl transition-all flex items-center justify-center space-x-3"
+                className="w-full bg-[#7C65C1] hover:bg-[#6952A3] text-white py-4 rounded-[0.4em] font-bold border-[0.2em] border-[#050505] shadow-[0.3em_0.3em_0_#000000] hover:shadow-[0.4em_0.4em_0_#000000] hover:-translate-x-[0.1em] hover:-translate-y-[0.1em] active:translate-x-[0.1em] active:translate-y-[0.1em] active:shadow-[0.15em_0.15em_0_#000000] transition-all flex items-center justify-center space-x-3 uppercase tracking-[0.05em]"
               >
-                <RefreshCw className="w-5 h-5" />
-                <span>🚀 Take Another Quest</span>
+                <RefreshCw className="w-5 h-5 text-white" />
+                <span className="text-white">🚀 Take Another Quest</span>
               </button>
               
               <button
@@ -951,7 +969,7 @@ const QuizeloApp = () => {
                   setQuizSessionId(null);
                   setFinalScore(null);
                 }}
-                className="w-full bg-gradient-to-r from-stone-200 to-stone-300 text-stone-700 py-4 rounded-2xl font-semibold hover:from-stone-300 hover:to-stone-400 transition-all"
+                className="w-full bg-white hover:bg-[#f7f7f7] text-[#050505] py-4 rounded-[0.4em] font-semibold border-[0.2em] border-[#050505] shadow-[0.2em_0.2em_0_#000000] hover:shadow-[0.3em_0.3em_0_#000000] hover:-translate-x-[0.1em] hover:-translate-y-[0.1em] transition-all"
               >
                 🏠 Back to Home Base
               </button>
@@ -969,20 +987,23 @@ const QuizeloApp = () => {
     const question = questions[currentQuestionIndex];
 
     return (
-      <div className="fixed inset-0 bg-gradient-to-br from-stone-100 via-amber-50 to-orange-100 overflow-y-auto">
+      <div className="fixed inset-0 bg-[#f7f7f7] overflow-y-auto">
         <div className="min-h-screen p-mobile">
           <div className="max-w-sm mx-auto">
-            {/* Game Header - Mobile optimized */}
-            <div className="flex items-center justify-between mb-4 sm:mb-6 bg-stone-50/80 backdrop-blur-xl rounded-2xl p-mobile shadow-xl border border-stone-200/50">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-xl flex items-center justify-center shadow-lg">
-                  <Brain className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-                </div>
-                <div>
-                  <h1 className="font-black text-stone-800 text-mobile-sm">🎯 {selectedTopic?.title}</h1>
-                  <p className="text-mobile-xs text-stone-500">
-                    🎮 Question {currentQuestionIndex + 1} of {questions.length}
-                  </p>
+            {/* Game Header - Retro Theme */}
+            <div className="retro-card-group relative mb-4 sm:mb-6">
+              <div className="retro-pattern-overlay" />
+              <div className="retro-card bg-white p-mobile relative z-[2]">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-[#7C65C1] rounded-[0.3em] border-[0.15em] border-[#050505] shadow-[0.2em_0.2em_0_#000000] flex items-center justify-center">
+                    <Brain className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                  </div>
+                  <div>
+                    <h1 className="font-black text-[#050505] text-mobile-sm">🎯 {selectedTopic?.title}</h1>
+                    <p className="text-mobile-xs text-[#6b7280] font-semibold">
+                      🎮 Question {currentQuestionIndex + 1} of {questions.length}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -993,70 +1014,73 @@ const QuizeloApp = () => {
               totalTime={15} 
             />
 
-            {/* Progress - Mobile optimized */}
+            {/* Progress - Retro Theme */}
             <div className="mb-6">
               <div className="flex justify-between items-center mb-2">
-                <span className="text-mobile-sm font-bold text-stone-600">🏆 Progress</span>
-                <span className="text-mobile-sm font-bold text-stone-600">
+                <span className="text-mobile-sm font-bold text-[#050505]">🏆 Progress</span>
+                <span className="text-mobile-sm font-bold text-[#050505]">
                   {Math.round(((currentQuestionIndex + 1) / questions.length) * 100)}% Complete
                 </span>
               </div>
-              <div className="w-full bg-stone-200/80 rounded-full h-3 overflow-hidden shadow-inner backdrop-blur-sm">
+              <div className="w-full bg-[#e8e8e8] rounded-full h-3 overflow-hidden border-[0.1em] border-[#050505]">
                 <div 
-                  className="bg-gradient-to-r from-emerald-400 via-teal-500 to-green-500 h-full rounded-full shadow-lg transition-all duration-800 ease-out"
+                  className="bg-[#7C65C1] h-full rounded-full transition-all duration-800 ease-out"
                   style={{ width: `${((currentQuestionIndex + 1) / questions.length) * 100}%` }}
                 />
               </div>
             </div>
 
-            {/* Question Card - Mobile optimized */}
-            <div className="bg-stone-50/80 backdrop-blur-xl rounded-3xl p-mobile shadow-2xl border-2 border-stone-200/50 mb-6 relative overflow-hidden">
-              <div className="relative">
-                <div className="flex items-start space-x-4 mb-6">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-xl flex items-center justify-center flex-shrink-0 mt-1 shadow-lg">
-                    <span className="text-white text-mobile-sm font-bold">{currentQuestionIndex + 1}</span>
+            {/* Question Card - Retro Theme */}
+            <div className="retro-card-group relative mb-6">
+              <div className="retro-pattern-overlay" />
+              <div className="retro-card bg-white p-mobile relative z-[2]">
+                <div className="relative">
+                  <div className="flex items-start space-x-4 mb-6">
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 bg-[#7C65C1] rounded-[0.3em] border-[0.15em] border-[#050505] shadow-[0.2em_0.2em_0_#000000] flex items-center justify-center flex-shrink-0 mt-1">
+                      <span className="text-white text-mobile-sm font-bold">{currentQuestionIndex + 1}</span>
+                    </div>
+                    <h2 className="text-mobile-base sm:text-xl font-black text-[#050505] leading-relaxed">
+                      🤔 {question.question}
+                    </h2>
                   </div>
-                  <h2 className="text-mobile-base sm:text-xl font-black text-stone-800 leading-relaxed">
-                    🤔 {question.question}
-                  </h2>
-                </div>
-                
-                <div className="space-y-4">
-                  {question.options.map((option, index) => (
-                    <button
-                      key={index}
-                      onClick={() => handleAnswer(index)}
-                      disabled={isAnswered}
-                      className={`w-full p-4 sm:p-5 text-left rounded-2xl border-2 transition-all duration-300 group relative overflow-hidden shadow-lg btn-mobile ${
-                        isAnswered
-                          ? index === question.correctAnswer
-                            ? 'border-emerald-400 bg-gradient-to-r from-emerald-100/80 to-teal-100/80 shadow-emerald-200/50'
-                            : index === userAnswers[currentQuestionIndex]
-                            ? 'border-red-400 bg-gradient-to-r from-red-100/80 to-orange-100/80 shadow-red-200/50'
-                            : 'border-stone-200 bg-stone-50/50'
-                          : 'border-stone-200/60 bg-stone-50/40 hover:border-amber-300 hover:bg-gradient-to-r hover:from-amber-50/80 hover:to-orange-50/80 hover:shadow-xl'
-                      }`}
-                    >
-                      <div className="relative flex items-center space-x-4">
-                        <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold shadow-lg transition-all ${
+                  
+                  <div className="space-y-4">
+                    {question.options.map((option, index) => (
+                      <button
+                        key={index}
+                        onClick={() => handleAnswer(index)}
+                        disabled={isAnswered}
+                        className={`w-full p-4 sm:p-5 text-left rounded-[0.4em] border-[0.2em] transition-all group relative overflow-hidden btn-mobile ${
                           isAnswered
                             ? index === question.correctAnswer
-                              ? 'border-emerald-400 bg-emerald-400 text-white'
+                              ? 'border-[#10b981] bg-[#f0fdf4] shadow-[0.2em_0.2em_0_#10b981]'
                               : index === userAnswers[currentQuestionIndex]
-                              ? 'border-red-400 bg-red-400 text-white'
-                              : 'border-stone-300 bg-stone-100 text-stone-400'
-                            : 'border-amber-300 bg-stone-50 text-amber-700 group-hover:border-amber-400 group-hover:bg-amber-400 group-hover:text-white'
-                        }`}>
-                          <span className="text-sm">
-                            {String.fromCharCode(65 + index)}
+                              ? 'border-[#ef4444] bg-[#fef2f2] shadow-[0.2em_0.2em_0_#ef4444]'
+                              : 'border-[#e8e8e8] bg-white'
+                            : 'border-[#050505] bg-white hover:border-[#7C65C1] hover:bg-[#f7f7f7] shadow-[0.2em_0.2em_0_#000000] hover:shadow-[0.3em_0.3em_0_#7C65C1] hover:-translate-x-[0.1em] hover:-translate-y-[0.1em]'
+                        }`}
+                      >
+                        <div className="relative flex items-center space-x-4">
+                          <div className={`w-8 h-8 rounded-[0.3em] border-[0.15em] flex items-center justify-center font-bold transition-all ${
+                            isAnswered
+                              ? index === question.correctAnswer
+                                ? 'border-[#10b981] bg-[#10b981] text-white'
+                                : index === userAnswers[currentQuestionIndex]
+                                ? 'border-[#ef4444] bg-[#ef4444] text-white'
+                                : 'border-[#e8e8e8] bg-[#f7f7f7] text-[#6b7280]'
+                              : 'border-[#050505] bg-white text-[#050505] group-hover:border-[#7C65C1] group-hover:bg-[#7C65C1] group-hover:text-white'
+                          }`}>
+                            <span className="text-sm font-bold">
+                              {String.fromCharCode(65 + index)}
+                            </span>
+                          </div>
+                          <span className="text-[#050505] group-hover:text-[#050505] font-semibold text-mobile-sm flex-1">
+                            {option}
                           </span>
                         </div>
-                        <span className="text-stone-700 group-hover:text-stone-800 font-medium text-mobile-sm flex-1">
-                          {option}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1250,8 +1274,9 @@ const QuizeloApp = () => {
    </AnimatePresence>
  );
  
- // Simplified Home Content
- const HomeContent = () => (
+// HomeContent is now imported from ./pages/HomeContent
+// Removed local definition - using imported component
+const HomeContentLocal = () => (
    <div className="space-y-4 w-full p-3">
      {/* Hero Section */}
      <div className="bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-2xl p-4 text-white relative overflow-hidden shadow-2xl border-2 border-white/20">
@@ -1563,224 +1588,7 @@ const QuizeloApp = () => {
    </div>
  );
  
- // Simplified Leaderboard Content
- const LeaderboardContent = () => (
-   <div className="space-y-4 w-full p-3">
-     <div className="flex items-center justify-between">
-       <h2 className="text-mobile-2xl sm:text-3xl font-black bg-gradient-to-r from-amber-700 via-orange-700 to-red-700 bg-clip-text text-transparent">
-         🏆 Hall of Fame
-       </h2>
-       <button
-         onClick={() => window.location.reload()}
-         className="p-3 rounded-xl hover:bg-amber-100/80 transition-colors bg-stone-50/80 backdrop-blur-sm border-2 border-stone-200/50 shadow-lg btn-mobile"
-       >
-         <RefreshCw className="w-5 h-5 sm:w-6 sm:h-6 text-stone-600" />
-       </button>
-     </div>
-
-     {/* Loading State */}
-     {leaderboardLoading && (
-       <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50 text-center">
-         <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-2xl">
-           <LoadingSpinner size={8} color="text-white" />
-         </div>
-         <h3 className="text-mobile-xl sm:text-2xl font-black text-stone-800 mb-4">🔄 Loading Leaderboard</h3>
-         <p className="text-stone-600">📊 Fetching the latest player data...</p>
-       </div>
-     )}
-
-     {/* Error State */}
-     {!leaderboardLoading && leaderboardError && (
-       <div className="bg-gradient-to-r from-red-100/80 to-orange-100/80 border border-red-200/60 rounded-2xl p-6 shadow-lg backdrop-blur-sm">
-         <div className="flex items-center space-x-3">
-           <AlertCircle className="w-5 h-5 sm:w-6 sm:h-6 text-red-500 flex-shrink-0" />
-           <p className="text-red-700 font-bold">❌ Failed to load leaderboard data</p>
-         </div>
-       </div>
-     )}
-
-     {/* Connected Player Stats */}
-     {isConnected && address && (
-       <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50">
-         <div className="flex items-center space-x-3 mb-4">
-           <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-xl flex items-center justify-center shadow-lg">
-             <User className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-           </div>
-           <div>
-             <h3 className="font-black text-stone-800 text-mobile-base sm:text-lg">📊 Your Stats</h3>
-             <p className="text-stone-600 text-mobile-sm">{formatAddress(address || '')}</p>
-           </div>
-         </div>
-         
-         {(() => {
-           const playerStats = getPlayerStats(address);
-           const playerRank = getPlayerRank(address);
-           
-           if (playerStats) {
-             return (
-               <div className="grid grid-cols-2 gap-4">
-                 {[
-                   { icon: Trophy, label: "🏆 Rank", value: `#${playerRank}`, color: "from-amber-50/80 to-orange-50/80 border-amber-200/60" },
-                   { icon: Coins, label: "💰 Earnings", value: formatEarnings(playerStats.totalEarnings), color: "from-emerald-50/80 to-teal-50/80 border-emerald-200/60" },
-                   { icon: Target, label: "🎯 Quizzes", value: playerStats.totalQuizzes, color: "from-blue-50/80 to-purple-50/80 border-blue-200/60" },
-                   { icon: TrendingUp, label: "📈 Win Rate", value: formatWinRate(playerStats.winRate), color: "from-pink-50/80 to-red-50/80 border-pink-200/60" }
-                 ].map((stat) => (
-                   <div 
-                     key={stat.label}
-                     className={`bg-gradient-to-br ${stat.color} rounded-xl p-4 border backdrop-blur-sm shadow-md hover:shadow-lg transition-all`}
-                   >
-                     <div className="flex items-center space-x-2 mb-2">
-                       <stat.icon className="w-4 h-4 text-amber-600" />
-                       <span className="text-mobile-xs font-bold text-stone-600">{stat.label}</span>
-                     </div>
-                     <p className="text-mobile-xl sm:text-2xl font-black text-stone-800">{stat.value}</p>
-                   </div>
-                 ))}
-               </div>
-             );
-           } else {
-             return (
-               <div className="bg-gradient-to-br from-amber-50/80 to-orange-50/80 rounded-xl p-4 border border-amber-200/60 text-center shadow-md backdrop-blur-sm">
-                 <p className="text-stone-800 font-bold">📊 No stats yet</p>
-                 <p className="text-stone-600 text-mobile-sm">Complete your first quiz to appear on the leaderboard! 🚀</p>
-               </div>
-             );
-           }
-         })()}
-       </div>
-     )}
-   </div>
- );
- 
- // Simplified Profile Content
- const ProfileContent = () => (
-   <div className="space-y-4 w-full p-3">
-     <div className="flex items-center justify-between">
-       <h2 className="text-mobile-2xl sm:text-3xl font-black bg-gradient-to-r from-amber-700 via-orange-700 to-red-700 bg-clip-text text-transparent">
-         👤 Player Profile
-       </h2>
-       <div className="relative">
-         <button
-           onClick={() => setShowProfileDropdown(!showProfileDropdown)}
-           className="p-3 rounded-xl hover:bg-amber-100/80 transition-colors shadow-lg bg-stone-50/80 backdrop-blur-sm border-2 border-stone-200/50 btn-mobile"
-         >
-           <Settings className="w-5 h-5 sm:w-6 sm:h-6 text-stone-600" />
-         </button>
-         
-         {showProfileDropdown && (
-           <div className="absolute right-0 top-full mt-2 w-48 bg-stone-50/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-amber-200/60 py-2 z-10">
-             <button className="flex items-center w-full px-4 py-3 text-sm text-stone-700 hover:bg-amber-50/80 transition-colors btn-mobile">
-               <Settings className="w-4 h-4 mr-3" />
-               ⚙️ Settings
-             </button>
-             <button className="flex items-center w-full px-4 py-3 text-sm text-red-600 hover:bg-red-50/80 transition-colors btn-mobile">
-               <LogOut className="w-4 h-4 mr-3" />
-               🔌 Disconnect
-             </button>
-           </div>
-         )}
-       </div>
-     </div>
-
-     {isConnected ? (
-       <div className="space-y-4">
-         <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50 hover:shadow-2xl transition-all">
-           <div className="text-center">
-             <div className="w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl">
-               <User className="w-10 h-10 sm:w-12 sm:h-12 text-white" />
-             </div>
-             <h3 className="font-black text-stone-800 text-mobile-xl sm:text-2xl mb-4">🎮 Connected Player</h3>
-             <div className="bg-gradient-to-r from-amber-50/80 to-orange-50/80 rounded-xl p-4 border border-amber-200/60 shadow-lg backdrop-blur-sm">
-               <p className="text-stone-600 text-mobile-sm font-bold mb-1">🔗 Wallet Address</p>
-               <p className="font-mono text-stone-800 font-bold text-mobile-sm">{formatAddress(address || '')}</p>
-             </div>
-           </div>
-         </div>
-
-         {quizelo.userInfo && (
-           <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50 hover:shadow-2xl transition-all">
-             <h4 className="font-black text-stone-800 text-mobile-base sm:text-lg mb-4 flex items-center space-x-2">
-               <Trophy className="w-5 h-5 text-amber-600" />
-               <span>📊 Player Stats</span>
-             </h4>
-             <div className="space-y-4">
-               {[
-                 { 
-                   label: "🎯 Today's quests", 
-                   value: `${quizelo.userInfo?.dailyCount ?? 0}/${quizelo.maxDailyQuizzes ?? 3}`,
-                   color: "from-blue-50/80 to-purple-50/80 border-blue-200/60"
-                 },
-                 { 
-                   label: "🏆 Won today", 
-                   value: quizelo.userInfo?.wonToday ? '✨ Yes!' : '⏳ Not yet',
-                   color: quizelo.userInfo?.wonToday ? "from-emerald-50/80 to-teal-50/80 border-emerald-200/60" : "from-stone-50/80 to-gray-50/80 border-stone-200/60"
-                 },
-                 { 
-                   label: "⚡ Ready to play", 
-                   value: quizelo.userInfo?.canQuiz ? '🟢 Ready!' : '🔴 Wait',
-                   color: quizelo.userInfo?.canQuiz ? "from-emerald-50/80 to-teal-50/80 border-emerald-200/60" : "from-red-50/80 to-orange-50/80 border-red-200/60"
-                 }
-               ].map((stat) => (
-                 <div 
-                   key={stat.label}
-                   className={`flex justify-between items-center p-4 bg-gradient-to-r ${stat.color} rounded-xl border backdrop-blur-sm shadow-lg hover:shadow-xl transition-all`}
-                 >
-                   <span className="text-stone-600 font-bold text-mobile-sm">{stat.label}</span>
-                   <span className={`font-black text-mobile-sm ${
-                     stat.label.includes('Won today') 
-                       ? (quizelo.userInfo?.wonToday ? 'text-emerald-700' : 'text-stone-500')
-                       : stat.label.includes('Ready to play')
-                       ? (quizelo.userInfo?.canQuiz ? 'text-emerald-700' : 'text-red-600')
-                       : 'text-stone-800'
-                   }`}>
-                     {stat.value}
-                   </span>
-                 </div>
-               ))}
-               
-               {/* Farcaster-specific stats */}
-               {isMiniApp && isInFarcaster && context?.user?.fid && (
-                 <div className="flex justify-between items-center p-4 bg-gradient-to-r from-purple-50/80 to-pink-50/80 rounded-xl border border-purple-200/60 shadow-lg backdrop-blur-sm hover:shadow-xl transition-all">
-                   <span className="text-stone-600 font-bold text-mobile-sm">🎭 Farcaster FID</span>
-                   <span className="font-black text-stone-800 text-mobile-sm">
-                     #{context.user.fid}
-                   </span>
-                 </div>
-               )}
-               
-               {/* Loading indicator for mini app */}
-               {isMiniApp && !quizelo.userInfo && quizelo.isLoading && (
-                 <div className="flex items-center justify-center p-4 bg-gradient-to-r from-stone-50/80 to-gray-50/80 rounded-xl border border-stone-200/60 backdrop-blur-sm">
-                   <div className="flex items-center space-x-3">
-                     <LoadingSpinner size={5} color="text-stone-500" />
-                     <span className="text-stone-600 font-bold text-mobile-sm">🔄 Loading player data...</span>
-                   </div>
-                 </div>
-               )}
-             </div>
-           </div>
-         )}
-       </div>
-     ) : (
-       <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50 text-center hover:shadow-2xl transition-all">
-         <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-stone-400 to-stone-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-2xl">
-           <Wallet className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
-         </div>
-         <h3 className="font-black text-stone-800 text-mobile-xl sm:text-2xl mb-4">🔌 No Player Connected</h3>
-         <p className="text-stone-600 mb-8 text-mobile-sm">Connect your wallet to join the adventure and start earning epic rewards! 🎮</p>
-         <button
-           onClick={() => {
-             connect({ connector: injected() });
-             setShowConnectWallet(false);
-           }}
-           className="w-full bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 text-white py-3 sm:py-4 rounded-2xl font-bold hover:shadow-2xl transition-all mb-4 btn-mobile"
-         >
-           🚀 Connect Wallet
-         </button>
-       </div>
-     )}
-   </div>
- );
+// LeaderboardContent and ProfileContent are now imported from ./pages/
  
  // SDK initialization with Mini App detection
  useEffect(() => {
@@ -1923,16 +1731,16 @@ const QuizeloApp = () => {
    );
  }
  
- return (
-   <div 
-     className="min-h-screen bg-gradient-to-br from-stone-100 via-amber-50 to-orange-100 mobile-safe-area"
-     style={{
-       paddingTop: context?.client?.safeAreaInsets?.top ?? 0,
-       paddingBottom: context?.client?.safeAreaInsets?.bottom ?? 0,
-       paddingLeft: context?.client?.safeAreaInsets?.left ?? 0,
-       paddingRight: context?.client?.safeAreaInsets?.right ?? 0,
-     }}
-   >
+  return (
+    <div 
+      className="min-h-screen bg-gradient-to-br from-stone-100 via-amber-50 to-orange-100 mobile-safe-area"
+      style={{
+        paddingTop: context?.client?.safeAreaInsets?.top ?? 0,
+        paddingBottom: context?.client?.safeAreaInsets?.bottom ?? 0,
+        paddingLeft: context?.client?.safeAreaInsets?.left ?? 0,
+        paddingRight: context?.client?.safeAreaInsets?.right ?? 0,
+      }}
+    >
      {/* Main Content - Mobile-centered layout */}
      <div className="min-h-screen w-full mobile-container pb-32 sm:pb-40">
        {showResults ? (
@@ -1941,63 +1749,111 @@ const QuizeloApp = () => {
          <QuizInterface />
        ) : (
          <div className="py-4 sm:py-6">
-           {activeTab === 'home' && <HomeContent />}
-           {activeTab === 'leaderboard' && <LeaderboardContent />}
-           {activeTab === 'profile' && <ProfileContent />}
+           {activeTab === 'home' && (
+            <HomeContent 
+              isMiniApp={isMiniApp}
+              isInFarcaster={isInFarcaster}
+              context={context}
+              setShowConnectWallet={setShowConnectWallet}
+              setShowTopicModal={setShowTopicModal}
+              switchToCelo={switchToCelo}
+              isSwitchingNetwork={isSwitchingNetwork}
+            />
+          )}
+          {activeTab === 'leaderboard' && <LeaderboardContent />}
+          {activeTab === 'profile' && (
+            <ProfileContent 
+              isMiniApp={isMiniApp}
+              isInFarcaster={isInFarcaster}
+              context={context}
+              showProfileDropdown={showProfileDropdown}
+              setShowProfileDropdown={setShowProfileDropdown}
+              setShowConnectWallet={setShowConnectWallet}
+            />
+          )}
          </div>
        )}
      </div>
 
-     {/* Mobile-optimized Start Quiz FAB */}
-     {!isInQuiz && !showResults && (
-       <button
-         onClick={() => setShowTopicModal(true)}
-         onTouchStart={(e) => {
-           e.preventDefault();
-           setShowTopicModal(true);
-         }}
-         disabled={quizelo.isLoading || aiLoading || (quizelo.userInfo ? !quizelo.userInfo.canQuiz : false)}
-         className="fixed bottom-28 sm:bottom-32 right-4 sm:right-6 w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 rounded-full shadow-2xl flex items-center justify-center hover:shadow-amber-300/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed z-50 border-4 border-white/80 btn-mobile"
-         title={quizelo.userInfo && !quizelo.userInfo.canQuiz ? "You've reached your daily quiz limit" : "Start a new quiz"}
-         style={{
-           zIndex: 9999,
-           touchAction: 'manipulation',
-           pointerEvents: 'auto'
-         }}
-       >
-         {quizelo.isLoading || aiLoading ? (
-           <LoadingSpinner size={6} color="text-white" />
-         ) : (
-           <Play className="w-6 h-6 sm:w-7 sm:h-7 text-white ml-0.5" />
-         )}
-       </button>
-     )}
+    {/* Cool Retro-themed Start Quiz Button */}
+    {!isInQuiz && !showResults && (
+      <div className="fixed bottom-28 sm:bottom-32 right-4 sm:right-6 z-50" style={{ zIndex: 9999 }}>
+        <div className="relative">
+          {/* Glow effect */}
+          <div className="absolute inset-0 bg-gradient-to-r from-[#7C65C1] via-[#9D7FE8] to-[#7C65C1] rounded-full blur-xl opacity-60 animate-pulse" style={{ 
+            width: 'calc(100% + 1.5rem)', 
+            height: 'calc(100% + 1.5rem)',
+            top: '-0.75rem',
+            left: '-0.75rem'
+          }} />
+          
+          <button
+            onClick={() => setShowTopicModal(true)}
+            onTouchStart={(e) => {
+              e.preventDefault();
+              setShowTopicModal(true);
+            }}
+            disabled={quizelo.isLoading || aiLoading || (quizelo.userInfo ? !quizelo.userInfo.canQuiz : false)}
+            className="relative bg-gradient-to-br from-[#7C65C1] via-[#9D7FE8] to-[#6952A3] w-16 h-16 sm:w-20 sm:h-20 rounded-full border-[0.25em] border-[#050505] flex items-center justify-center transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed btn-mobile shadow-[0.4em_0.4em_0_#000000] hover:shadow-[0.6em_0.6em_0_#000000] hover:-translate-x-[0.2em] hover:-translate-y-[0.2em] active:translate-x-[0.1em] active:translate-y-[0.1em] active:shadow-[0.2em_0.2em_0_#000000] hover:scale-110 group overflow-hidden"
+            style={{
+              touchAction: 'manipulation',
+              pointerEvents: 'auto',
+              animation: 'playButtonPulse 2s ease-in-out infinite'
+            }}
+            title={quizelo.userInfo && !quizelo.userInfo.canQuiz ? "You've reached your daily quiz limit" : "Start a new quiz"}
+          >
+            {/* Shine effect */}
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+            
+            {/* Inner glow */}
+            <div className="absolute inset-2 rounded-full bg-gradient-to-br from-white/20 to-transparent" />
+            
+            {/* Play icon */}
+            <div className="relative z-10 transform group-hover:scale-110 transition-transform duration-300">
+              {quizelo.isLoading || aiLoading ? (
+                <LoadingSpinner size={6} color="text-white" />
+              ) : (
+                <div className="relative">
+                  <Play className="w-7 h-7 sm:w-9 sm:h-9 text-white ml-1 drop-shadow-2xl filter brightness-110" />
+                  {/* Sparkle effect */}
+                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-300 rounded-full animate-ping opacity-75" />
+                  <div className="absolute -bottom-1 -left-1 w-1.5 h-1.5 bg-yellow-300 rounded-full animate-ping opacity-75" style={{ animationDelay: '0.5s' }} />
+                </div>
+              )}
+            </div>
+            
+            {/* Ripple effect on click */}
+            <div className="absolute inset-0 rounded-full bg-white/30 scale-0 group-active:scale-150 opacity-0 group-active:opacity-100 transition-all duration-500" />
+          </button>
+        </div>
+      </div>
+    )}
 
-     {/* Mobile-optimized Bottom Navigation */}
-     {!isInQuiz && !showResults && (
-       <div className="fixed bottom-0 left-0 right-0 bg-stone-50/95 backdrop-blur-lg border-t-2 border-amber-200/60 px-2 sm:px-4 py-3 sm:py-4 z-20 shadow-2xl mobile-safe-area">
-         <div className="flex justify-around max-w-sm mx-auto">
-           {[
-             { tab: 'home', icon: Home, label: '🏠 Home' },
-             { tab: 'leaderboard', icon: Trophy, label: '🏆 Ranks' },
-             { tab: 'profile', icon: User, label: '👤 Profile' }
-           ].map((item) => (
-             <button
-               key={item.tab}
-               onClick={() => setActiveTab(item.tab)}
-               className={`flex flex-col items-center space-y-1 sm:space-y-2 py-2 sm:py-3 px-2 sm:px-4 rounded-2xl transition-all hover:scale-105 btn-mobile ${
-                 activeTab === item.tab 
-                   ? 'bg-gradient-to-r from-amber-100/80 via-orange-100/80 to-red-100/80 text-amber-700 shadow-lg backdrop-blur-sm' 
-                   : 'text-stone-500 hover:text-stone-700 hover:bg-stone-100/80'
-               }`}
-             >
-               <item.icon className="w-5 h-5 sm:w-6 sm:h-6" />
-               <span className="text-xs font-bold">{item.label}</span>
-             </button>
-           ))}
-         </div>
-       </div>
-     )}
+    {/* Retro-themed Bottom Navigation */}
+    {!isInQuiz && !showResults && (
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t-[0.35em] border-[#050505] px-2 sm:px-4 py-3 sm:py-4 z-20 shadow-[0_-0.7em_0_#000000] mobile-safe-area">
+        <div className="flex justify-around max-w-sm mx-auto">
+          {[
+            { tab: 'home', icon: Home, label: '🏠 Home' },
+            { tab: 'leaderboard', icon: Trophy, label: '🏆 Ranks' },
+            { tab: 'profile', icon: User, label: '👤 Profile' }
+          ].map((item) => (
+            <button
+              key={item.tab}
+              onClick={() => setActiveTab(item.tab)}
+              className={`flex flex-col items-center space-y-1 sm:space-y-2 py-2 sm:py-3 px-2 sm:px-4 rounded-[0.3em] transition-all btn-mobile border-[0.15em] ${
+                activeTab === item.tab 
+                  ? 'bg-[#7C65C1] border-[#050505] text-white shadow-[0.2em_0.2em_0_#000000]' 
+                  : 'bg-white border-[#050505] text-[#050505] hover:bg-[#f7f7f7] shadow-[0.15em_0.15em_0_#000000]'
+              }`}
+            >
+              <item.icon className="w-5 h-5 sm:w-6 sm:h-6" />
+              <span className="text-xs font-bold">{item.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    )}
 
      {/* Modals */}
      {showConnectWallet && <ConnectWalletModal />}

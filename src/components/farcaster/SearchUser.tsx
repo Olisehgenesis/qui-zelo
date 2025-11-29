@@ -54,41 +54,44 @@ const Modal = ({
 }) => {
   if (!isOpen) return null;
 
-  const getBgColor = () => {
+  const getHeaderBg = () => {
     switch (type) {
-      case "success": return "bg-green-50 border-green-500";
-      case "error": return "bg-red-50 border-red-500";
-      default: return "bg-blue-50 border-blue-500";
-    }
-  };
-
-  const getTitleColor = () => {
-    switch (type) {
-      case "success": return "text-green-700";
-      case "error": return "text-red-700";
-      default: return "text-blue-700";
+      case "success": return "#10b981";
+      case "error": return "#ef4444";
+      default: return "#7C65C1";
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-      <div className={`relative w-full max-w-md p-6 mx-4 rounded-lg shadow-lg ${getBgColor()} border`}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className={`text-lg font-medium ${getTitleColor()}`}>{title}</h3>
-          <button 
-            onClick={onClose} 
-            className="text-gray-500 hover:text-gray-700 transition-colors"
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-lg">
+      <div className="retro-card-group relative">
+        <div className="retro-pattern-overlay" />
+        <div className="retro-card bg-white p-6 w-full max-w-md mx-4 z-[2]">
+          <div 
+            className="retro-title-header"
+            style={{ background: getHeaderBg() }}
           >
-            <X size={20} />
-          </button>
-        </div>
-        <div className="mt-2">
-          {children}
-        </div>
-        <div className="mt-6 flex justify-end">
-          <Button onClick={onClose}>
-            Close
-          </Button>
+            <span>{title}</span>
+            <button 
+              onClick={onClose} 
+              className="p-2 rounded-[0.3em] hover:bg-white/20 transition-colors"
+            >
+              <X size={20} className="text-white" />
+            </button>
+          </div>
+          <div className="px-[1.5em] py-[1.5em]">
+            <div className="mb-4">
+              {children}
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={onClose}
+                className="bg-[#7C65C1] hover:bg-[#6952A3] text-white py-3 px-6 rounded-[0.4em] font-bold border-[0.2em] border-[#050505] shadow-[0.3em_0.3em_0_#000000] hover:shadow-[0.4em_0.4em_0_#000000] hover:-translate-x-[0.1em] hover:-translate-y-[0.1em] active:translate-x-[0.1em] active:translate-y-[0.1em] active:shadow-[0.15em_0.15em_0_#000000] transition-all uppercase tracking-[0.05em]"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
