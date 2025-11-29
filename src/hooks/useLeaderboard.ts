@@ -1,9 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { usePublicClient, useAccount, Address } from 'wagmi';
-import { celo, celoAlfajores } from 'viem/chains';
+import { Address } from 'viem';
 import { useQuizelo } from './useQuizelo';
-
-const env = process.env.NEXT_PUBLIC_ENV;
 
 interface LeaderboardEntry {
   user: string;
@@ -21,10 +18,6 @@ interface LeaderboardStats {
 }
 
 export const useLeaderboard = () => {
-  const publicClient = usePublicClient({ 
-    chainId: env === 'dev' ? celoAlfajores.id : celo.id 
-  });
-  const { address } = useAccount();
   const quizelo = useQuizelo();
 
   // State

@@ -8,18 +8,18 @@ import {
   useSwitchChain,
   useReadContract,
   useWriteContract,
-  useWaitForTransactionReceipt,
 } from 'wagmi';
 import { celo, celoAlfajores } from 'viem/chains';
 import { quizABI } from '../abi/quizABI';
 import { getReferralTag, submitReferral } from '@divvi/referral-sdk';
 import { erc20Abi } from 'viem';
+import { isMiniPay, getFeeCurrencyForMiniPay } from '~/lib/minipay';
 
 const QUIZELO_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_QUIZELO_CONTRACT_ADDRESS as `0x${string}`;
 const env = process.env.NEXT_PUBLIC_ENV;
 
-// Divvi consumer address for referral tracking
-const DIVVI_CONSUMER_ADDRESS = '0x53eaF4CD171842d8144e45211308e5D90B4b0088' as `0x${string}`;
+// Divvi consumer address for referral tracking (from environment variable)
+const DIVVI_CONSUMER_ADDRESS = (process.env.NEXT_PUBLIC_DIVVI_CONSUMER_ADDRESS || '0x53eaF4CD171842d8144e45211308e5D90B4b0088') as `0x${string}`;
 
 // If env is dev, use alfajores instead of celo in clients
 const targetChainId = env === 'dev' ? 44787 : 42220;
@@ -151,12 +151,19 @@ const useContractTransaction = () => {
         referralTagLength: referralTag.length,
       });
 
+      // Get fee currency for MiniPay
+      const feeCurrency = isMiniPay() && functionName === 'startQuiz' && args[0] 
+        ? getFeeCurrencyForMiniPay(args[0] as string)
+        : undefined;
+
       // Send transaction with Divvi referral tag
+      // MiniPay supports feeCurrency parameter
       const txHash = await sendTransactionAsync({
         to: QUIZELO_CONTRACT_ADDRESS,
         data: dataWithReferral,
         value,
-      });
+        ...(feeCurrency && { feeCurrency: feeCurrency as `0x${string}` }),
+      } as Parameters<typeof sendTransactionAsync>[0]);
 
       if (!txHash) throw new Error('Transaction failed to send');
 
@@ -215,7 +222,7 @@ export const useQuizelo = () => {
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [contractStats, setContractStats] = useState<ContractStats | null>(null);
   const [activeQuizTakers, setActiveQuizTakers] = useState<string[]>([]);
-  const [currentQuizSession, setCurrentQuizSession] = useState<QuizSession | null>(null);
+  const [currentQuizSession] = useState<QuizSession | null>(null);
   const [supportedTokens, setSupportedTokens] = useState<string[]>([]);
   const [selectedToken, setSelectedToken] = useState<string | null>(null);
 

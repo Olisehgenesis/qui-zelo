@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { celo } from 'viem/chains';
 import { useChainId, useAccount } from 'wagmi';
+import { Address } from 'viem';
 import { sdk } from '@farcaster/frame-sdk';
 import { useQuizelo } from '~/hooks/useQuizelo';
 import { useTopics } from '~/hooks/useTopics';
@@ -42,6 +43,7 @@ interface HomeContentProps {
   setShowTopicModal: (show: boolean) => void;
   switchToCelo: () => void;
   isSwitchingNetwork: boolean;
+  setShowFeeCurrencyModal?: (show: boolean) => void;
 }
 
 const formatAddress = (addr: string) => {
@@ -56,7 +58,8 @@ export const HomeContent: React.FC<HomeContentProps> = ({
   setShowConnectWallet,
   setShowTopicModal,
   switchToCelo,
-  isSwitchingNetwork
+  isSwitchingNetwork,
+  setShowFeeCurrencyModal
 }) => {
   const quizelo = useQuizelo();
   const { selectedTopic } = useTopics();
@@ -69,7 +72,7 @@ export const HomeContent: React.FC<HomeContentProps> = ({
     if (isConnected && quizelo.supportedTokens.length > 0) {
       const token = quizelo.selectedToken || quizelo.supportedTokens[0];
       if (token) {
-        quizelo.refetchContractStats(token as any);
+        quizelo.refetchContractStats(token as Address);
       }
     }
   }, [isConnected, quizelo.supportedTokens, quizelo.selectedToken, quizelo]);
@@ -104,7 +107,7 @@ export const HomeContent: React.FC<HomeContentProps> = ({
             
             {isConnected ? (
               <div className="p-3 bg-[#f7f7f7] border-[0.15em] border-[#050505] rounded-[0.4em] shadow-lg">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center space-x-3">
                     <Wallet className="w-4 h-4 text-[#050505]" />
                     <div>
@@ -134,6 +137,22 @@ export const HomeContent: React.FC<HomeContentProps> = ({
                     )}
                   </button>
                 </div>
+                {quizelo.selectedToken && setShowFeeCurrencyModal && (
+                  <div className="mt-2 pt-2 border-t border-[#e5e7eb]">
+                    <button
+                      onClick={() => setShowFeeCurrencyModal(true)}
+                      className="flex items-center justify-between w-full px-2 py-1.5 bg-white hover:bg-[#f0f0f0] rounded-[0.3em] border-[0.1em] border-[#050505] transition-all text-left"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <Coins className="w-3 h-3 text-[#7C65C1]" />
+                        <span className="text-[#050505] text-xs font-bold">
+                          Payment: {quizelo.selectedToken.slice(0, 6)}...{quizelo.selectedToken.slice(-4)}
+                        </span>
+                      </div>
+                      <ChevronRight className="w-3 h-3 text-[#7C65C1]" />
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="p-3 bg-[#f7f7f7] border-[0.15em] border-[#050505] rounded-[0.4em] shadow-lg">
@@ -360,7 +379,7 @@ export const HomeContent: React.FC<HomeContentProps> = ({
                     onClick={() => {
                       const token = quizelo.selectedToken || (quizelo.supportedTokens.length > 0 ? quizelo.supportedTokens[0] : null);
                       if (token) {
-                        quizelo.refetchContractStats(token as any);
+                        quizelo.refetchContractStats(token as Address);
                       }
                     }}
                     className="text-mobile-xs text-[#f59e0b] hover:text-[#d97706] font-bold underline"

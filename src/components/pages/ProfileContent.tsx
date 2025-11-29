@@ -49,7 +49,12 @@ export const ProfileContent: React.FC<ProfileContentProps> = ({
   const { address, isConnected } = useAccount();
   const { connect } = useConnect();
   const quizelo = useQuizelo();
-  const [quizHistory, setQuizHistory] = useState<any[]>([]);
+  const [quizHistory, setQuizHistory] = useState<Array<{
+    sessionId: string;
+    score: number;
+    reward: bigint;
+    timestamp: number;
+  }>>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   // Fetch user stats and history

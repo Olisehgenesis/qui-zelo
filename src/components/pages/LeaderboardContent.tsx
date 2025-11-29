@@ -5,23 +5,14 @@ import {
   Trophy, 
   User, 
   Coins, 
-  Target,
-  TrendingUp,
   RefreshCw,
   AlertCircle,
   Flame,
-  Award
 } from 'lucide-react';
 import { useAccount } from 'wagmi';
 import { Address } from 'viem';
 import { useLeaderboard } from '~/hooks/useLeaderboard';
-import { useQuizelo } from '~/hooks/useQuizelo';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-
-const formatAddress = (addr: string) => {
-  if (!addr) return '';
-  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-};
 
 export const LeaderboardContent: React.FC = () => {
   const { address, isConnected } = useAccount();
@@ -34,8 +25,6 @@ export const LeaderboardContent: React.FC = () => {
     error: leaderboardError,
     activeTab,
     setActiveTab,
-    getPlayerRank,
-    getPlayerStats,
     getUserRanks,
     formatEarnings,
     formatScore,
@@ -43,8 +32,6 @@ export const LeaderboardContent: React.FC = () => {
     formatAddress,
     fetchLeaderboardData,
   } = useLeaderboard();
-  
-  const quizelo = useQuizelo();
   const [userRanks, setUserRanks] = useState<{
     scoreRank: number;
     earnerRank: number;
@@ -110,6 +97,9 @@ export const LeaderboardContent: React.FC = () => {
         return userRanks.scoreRank;
     }
   };
+  
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _getCurrentRank = getCurrentRank;
 
   return (
     <div className="space-y-4 w-full p-3">

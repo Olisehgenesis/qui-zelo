@@ -11,24 +11,19 @@ import {
   Coins, 
   CheckCircle,
   AlertCircle,
-  Settings,
-  LogOut,
   ChevronRight,
   Loader2,
   Sparkles,
   Brain,
   RefreshCw,
-
-  Target,
-  TrendingUp,
-  
-  
 } from 'lucide-react';
 import { celo } from 'viem/chains';
 import { useSwitchChain, useChainId, useAccount, useConnect } from 'wagmi';
 
 import { injected } from 'wagmi/connectors';
 import { sdk } from '@farcaster/frame-sdk';
+import { isMiniPay } from '~/lib/minipay';
+import { FeeCurrencyModal } from './modals/FeeCurrencyModal';
 
 // Import your hooks
 import { useQuizelo } from '../hooks/useQuizelo';
@@ -586,22 +581,14 @@ const QuizeloApp = () => {
   }>();
   const [isSDKLoaded, setIsSDKLoaded] = useState(false);
   const [isMiniApp, setIsMiniApp] = useState(false);
+  const [showFeeCurrencyModal, setShowFeeCurrencyModal] = useState(false);
+  const [isMiniPayWallet, setIsMiniPayWallet] = useState(false);
 
   // Your hooks
   const quizelo = useQuizelo();
   const { topics, selectedTopic, selectTopic } = useTopics();
   const { generateQuestions, loading: aiLoading, error: aiError, questions, markAnswer, calculateScore } = useAI();
-  const { 
-  
-    isLoading: leaderboardLoading,
-    error: leaderboardError,
-    getPlayerRank,
-    getPlayerStats,
-  
-    formatEarnings,
-    formatWinRate,
-   
-  } = useLeaderboard();
+  const { } = useLeaderboard();
   const { switchChain } = useSwitchChain();
   const chainId = useChainId();
   const { address, isConnected } = useAccount();
@@ -609,6 +596,13 @@ const QuizeloApp = () => {
 
   // Detect if we're in Farcaster
   const isInFarcaster = context?.client?.clientFid !== undefined;
+
+  // Detect MiniPay wallet
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setIsMiniPayWallet(isMiniPay());
+    }
+  }, []);
 
   const handleAnswer = useCallback((answerIndex: number) => {
     if (isAnswered || isTimeUp) return; // Prevent multiple answers
@@ -738,19 +732,6 @@ const QuizeloApp = () => {
     setShowQuizInfo(true);
   }, [selectTopic, isConnected, chainId, switchToCelo]);
 
-  const handleStartQuiz = useCallback(async () => {
-    setShowQuizInfo(false);
-    
-    // Explicitly pass selectedTopic to avoid undefined issues
-    if (!selectedTopic) {
-      console.error('No topic selected when trying to start quiz');
-      setShowTopicModal(true);
-      return;
-    }
-    
-    await startQuizFlow(selectedTopic);
-  }, [selectedTopic]);
-
   const startQuizFlow = useCallback(async (topic = selectedTopic) => {
     if (!topic) {
       console.error('No topic provided to startQuizFlow');
@@ -790,18 +771,31 @@ const QuizeloApp = () => {
             setCurrentQuestionIndex(0);
             setUserAnswers([]);
             setTimeLeft(15);
-          }).catch(() => {
-            setShowQuizGeneration(false);
+            setIsAnswered(false);
+            setIsTimeUp(false);
           });
-        }, 2000);
+        }, 1000);
       } else {
         setTransactionStatus('error');
       }
     } catch (error) {
-      console.error(error);
+      console.error('Error starting quiz:', error);
       setTransactionStatus('error');
     }
   }, [selectedTopic, chainId, switchToCelo, quizelo, generateQuestions]);
+
+  const handleStartQuiz = useCallback(async () => {
+    setShowQuizInfo(false);
+    
+    // Explicitly pass selectedTopic to avoid undefined issues
+    if (!selectedTopic) {
+      console.error('No topic selected when trying to start quiz');
+      setShowTopicModal(true);
+      return;
+    }
+    
+    await startQuizFlow(selectedTopic);
+  }, [selectedTopic, startQuizFlow]);
 
   const handleContinueToNext = useCallback(() => {
     setShowQuestionResult(false);
@@ -855,11 +849,6 @@ const QuizeloApp = () => {
       return '💪';
     };
 
-    const getScoreColor = (percentage: number) => {
-      if (percentage >= 80) return 'from-amber-400 via-orange-500 to-red-500';
-      if (percentage >= 60) return 'from-emerald-400 via-teal-500 to-green-500';
-      return 'from-blue-400 via-purple-500 to-pink-500';
-    };
 
     const getScoreMessage = (percentage: number) => {
       if (percentage >= 90) return 'LEGENDARY! 🌟';
@@ -911,7 +900,7 @@ const QuizeloApp = () => {
                   </p>
                   
                   <div className="flex items-center justify-center space-x-2 text-[#6b7280]">
-                    <Target className="w-4 h-4 text-[#050505]" />
+                    <Trophy className="w-4 h-4 text-[#050505]" />
                     <span className="text-sm sm:text-base font-semibold">
                       🎯 {finalScore.correct} out of {finalScore.total} correct
                     </span>
@@ -1276,7 +1265,8 @@ const QuizeloApp = () => {
  
 // HomeContent is now imported from ./pages/HomeContent
 // Removed local definition - using imported component
-const HomeContentLocal = () => (
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _HomeContentLocal = () => (
    <div className="space-y-4 w-full p-3">
      {/* Hero Section */}
      <div className="bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-2xl p-4 text-white relative overflow-hidden shadow-2xl border-2 border-white/20">
@@ -1617,7 +1607,7 @@ const HomeContentLocal = () => (
    load();
  }, []);
 
- // Auto-connect logic for Farcaster Mini App users
+ // Auto-connect logic for Farcaster Mini App users and MiniPay
  useEffect(() => {
    if (isSDKLoaded && isMiniApp && isInFarcaster && !isConnected) {
      // Try to connect with Farcaster frame connector first
@@ -1628,10 +1618,13 @@ const HomeContentLocal = () => (
        // Fallback to injected wallet
        connect({ connector: injected() });
      }
+   } else if (isSDKLoaded && isMiniPayWallet && !isConnected) {
+     // Auto-connect for MiniPay
+     connect({ connector: injected() });
    }
- }, [isSDKLoaded, isMiniApp, isInFarcaster, isConnected, connect, connectors]);
+ }, [isSDKLoaded, isMiniApp, isInFarcaster, isConnected, connect, connectors, isMiniPayWallet]);
 
- // Handle wallet connection state
+ // Handle wallet connection state and fee currency selection
  useEffect(() => {
    if (isMiniApp && isInFarcaster) {
      // In Farcaster Mini App, we don't show connect modal initially
@@ -1642,7 +1635,17 @@ const HomeContentLocal = () => (
    } else {
      setShowConnectWallet(false);
    }
- }, [isConnected, isMiniApp, isInFarcaster]);
+
+   // Show fee currency selection modal when connected and no token is selected
+   // Only show once per session
+   if (isConnected && isSDKLoaded && !quizelo.selectedToken && quizelo.supportedTokens.length > 0 && !showFeeCurrencyModal) {
+     // Small delay to ensure UI is ready
+     const timer = setTimeout(() => {
+       setShowFeeCurrencyModal(true);
+     }, 500);
+     return () => clearTimeout(timer);
+   }
+ }, [isConnected, isMiniApp, isInFarcaster, isSDKLoaded, quizelo.selectedToken, quizelo.supportedTokens, showFeeCurrencyModal]);
 
  // Network checking
  useEffect(() => {
@@ -1758,6 +1761,7 @@ const HomeContentLocal = () => (
               setShowTopicModal={setShowTopicModal}
               switchToCelo={switchToCelo}
               isSwitchingNetwork={isSwitchingNetwork}
+              setShowFeeCurrencyModal={setShowFeeCurrencyModal}
             />
           )}
           {activeTab === 'leaderboard' && <LeaderboardContent />}
@@ -1883,6 +1887,15 @@ const HomeContentLocal = () => (
        potentialWinnings={quizelo.quizFee && typeof quizelo.quizFee === 'bigint' ? quizelo.formatEther(quizelo.quizFee * 5n) : '0.5'}
        isLoading={quizelo.isLoading}
      />}
+     <FeeCurrencyModal
+       isVisible={showFeeCurrencyModal}
+       onSelect={(tokenAddress) => {
+         quizelo.setSelectedToken(tokenAddress);
+         setShowFeeCurrencyModal(false);
+       }}
+       supportedTokens={quizelo.supportedTokens}
+       isMiniPayWallet={isMiniPayWallet}
+     />
    </div>
  );
 };
