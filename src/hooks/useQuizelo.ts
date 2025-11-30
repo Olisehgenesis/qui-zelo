@@ -7,7 +7,6 @@ import {
   useChainId,
   useSwitchChain,
   useReadContract,
-  useWriteContract,
 } from 'wagmi';
 import { celo, celoAlfajores } from 'viem/chains';
 import { quizABI } from '../abi/quizABI';
@@ -15,8 +14,13 @@ import { getReferralTag, submitReferral } from '@divvi/referral-sdk';
 import { erc20Abi } from 'viem';
 import { isMiniPay, getFeeCurrencyForMiniPay } from '~/lib/minipay';
 
-const QUIZELO_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_QUIZELO_CONTRACT_ADDRESS as `0x${string}`;
+const QUIZELO_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_QUIZELO_CONTRACT_ADDRESS as `0x${string}` | undefined;
 const env = process.env.NEXT_PUBLIC_ENV;
+
+// Validate contract address is set
+if (!QUIZELO_CONTRACT_ADDRESS && typeof window !== 'undefined') {
+  console.warn('⚠️ NEXT_PUBLIC_QUIZELO_CONTRACT_ADDRESS is not set in environment variables');
+}
 
 // Divvi consumer address for referral tracking (from environment variable)
 const DIVVI_CONSUMER_ADDRESS = (process.env.NEXT_PUBLIC_DIVVI_CONSUMER_ADDRESS || '0x53eaF4CD171842d8144e45211308e5D90B4b0088') as `0x${string}`;
@@ -88,7 +92,7 @@ interface GlobalStats {
 }
 
 // Custom hook for contract transactions
-const useContractTransaction = () => {
+const useContractTransaction = (selectedToken: string | null) => {
   const { sendTransactionAsync } = useSendTransaction();
   const { isConnected, address } = useAccount();
   const publicClient = usePublicClient({ 
@@ -151,15 +155,20 @@ const useContractTransaction = () => {
         referralTagLength: referralTag.length,
       });
 
-      // Get fee currency for MiniPay
-      const feeCurrency = isMiniPay() && functionName === 'startQuiz' && args[0] 
-        ? getFeeCurrencyForMiniPay(args[0] as string)
+      // Get fee currency for MiniPay - use the selected token
+      // The selected token should be used as fee currency for all transactions
+      const feeCurrency = isMiniPay() 
+        ? getFeeCurrencyForMiniPay(selectedToken)
         : undefined;
 
       // Send transaction with Divvi referral tag
       // MiniPay supports feeCurrency parameter
+      if (!QUIZELO_CONTRACT_ADDRESS) {
+        throw new Error('Contract address not configured');
+      }
+
       const txHash = await sendTransactionAsync({
-        to: QUIZELO_CONTRACT_ADDRESS,
+        to: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
         data: dataWithReferral,
         value,
         ...(feeCurrency && { feeCurrency: feeCurrency as `0x${string}` }),
@@ -198,7 +207,7 @@ const useContractTransaction = () => {
       onError?.(error as Error);
       return { success: false, error: error as Error };
     }
-  }, [sendTransactionAsync, isConnected, address, publicClient, switchChain, currentChainId]);
+  }, [sendTransactionAsync, isConnected, address, publicClient, switchChain, currentChainId, selectedToken]);
 
   return { executeTransaction };
 };
@@ -208,8 +217,7 @@ export const useQuizelo = () => {
   const publicClient = usePublicClient({ chainId: env === 'dev' ? celoAlfajores.id : celo.id });
   const currentChainId = useChainId();
   const { switchChain } = useSwitchChain();
-  const { executeTransaction } = useContractTransaction();
-  const { writeContractAsync } = useWriteContract();
+  const { sendTransactionAsync: sendTransactionAsyncForApprove } = useSendTransaction();
 
   // State management
   const [isLoading, setIsLoading] = useState(false);
@@ -226,44 +234,62 @@ export const useQuizelo = () => {
   const [supportedTokens, setSupportedTokens] = useState<string[]>([]);
   const [selectedToken, setSelectedToken] = useState<string | null>(null);
 
+  // Initialize contract transaction hook with selectedToken
+  const { executeTransaction } = useContractTransaction(selectedToken);
+
   // Contract read hooks for constants
-  const { data: quizFee } = useReadContract({
-    address: QUIZELO_CONTRACT_ADDRESS,
+  const { data: minQuizFee } = useReadContract({
+    address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
     abi: quizABI,
-    functionName: 'QUIZ_FEE'
+    functionName: 'MIN_QUIZ_FEE',
+    query: {
+      enabled: !!QUIZELO_CONTRACT_ADDRESS,
+    }
   });
 
   const { data: quizDuration } = useReadContract({
-    address: QUIZELO_CONTRACT_ADDRESS,
+    address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
     abi: quizABI,
-    functionName: 'QUIZ_DURATION'
+    functionName: 'QUIZ_DURATION',
+    query: {
+      enabled: !!QUIZELO_CONTRACT_ADDRESS,
+    }
   });
 
   const { data: cooldownPeriod } = useReadContract({
-    address: QUIZELO_CONTRACT_ADDRESS,
+    address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
     abi: quizABI,
-    functionName: 'COOLDOWN_PERIOD'
+    functionName: 'COOLDOWN_PERIOD',
+    query: {
+      enabled: !!QUIZELO_CONTRACT_ADDRESS,
+    }
   });
 
   const { data: maxDailyQuizzes } = useReadContract({
-    address: QUIZELO_CONTRACT_ADDRESS,
+    address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
     abi: quizABI,
-    functionName: 'MAX_DAILY_QUIZZES'
+    functionName: 'MAX_DAILY_QUIZZES',
+    query: {
+      enabled: !!QUIZELO_CONTRACT_ADDRESS,
+    }
   });
 
   const { data: minContractBalance } = useReadContract({
-    address: QUIZELO_CONTRACT_ADDRESS,
+    address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
     abi: quizABI,
-    functionName: 'MIN_CONTRACT_BALANCE'
+    functionName: 'MIN_CONTRACT_BALANCE',
+    query: {
+      enabled: !!QUIZELO_CONTRACT_ADDRESS,
+    }
   });
 
   // Contract read hooks for user data
   const { data: userInfoData, refetch: refetchUserInfo } = useReadContract({
-    address: QUIZELO_CONTRACT_ADDRESS,
+    address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
     abi: quizABI,
     functionName: 'getUserInfo',
     args: address ? [address] : undefined,
-    query: { enabled: !!address }
+    query: { enabled: !!address && !!QUIZELO_CONTRACT_ADDRESS }
   });
 
   // Utility functions
@@ -293,7 +319,7 @@ export const useQuizelo = () => {
       for (const log of typedReceipt.logs) {
         if (log.topics && log.topics.length >= 2) {
           // Check if this is from our contract
-          if (log.address?.toLowerCase() === QUIZELO_CONTRACT_ADDRESS.toLowerCase()) {
+          if (QUIZELO_CONTRACT_ADDRESS && log.address?.toLowerCase() === QUIZELO_CONTRACT_ADDRESS.toLowerCase()) {
             // The sessionId is typically in the first indexed parameter (topics[1])
             const sessionId = log.topics[1];
             if (sessionId && sessionId !== '0x0000000000000000000000000000000000000000000000000000000000000000') {
@@ -312,32 +338,47 @@ export const useQuizelo = () => {
     }
   };
 
-  // Get supported tokens
+  // Get supported tokens - public function, doesn't require wallet connection
   const getSupportedTokens = useCallback(async (): Promise<string[]> => {
-    if (!publicClient) return [];
+    if (!publicClient || !QUIZELO_CONTRACT_ADDRESS) {
+      return [];
+    }
+    
     try {
       const tokens = await publicClient.readContract({
-        address: QUIZELO_CONTRACT_ADDRESS,
+        address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
         abi: quizABI,
         functionName: 'getSupportedTokens',
       }) as string[];
-      setSupportedTokens(tokens);
-      if (tokens.length > 0 && !selectedToken) {
-        setSelectedToken(tokens[0]);
+      
+      if (Array.isArray(tokens) && tokens.length > 0) {
+        setSupportedTokens(tokens);
+        if (!selectedToken) {
+          setSelectedToken(tokens[0]);
+        }
+        return tokens;
       }
-      return tokens;
+      
+      return [];
     } catch (err) {
-      console.error('Failed to fetch supported tokens:', err);
+      // Only log unexpected errors, not network/contract issues
+      const error = err as Error;
+      if (error?.message && 
+          !error.message.includes('HTTP request failed') && 
+          !error.message.includes('wallet is not yet connected') &&
+          !error.message.includes('ContractFunctionExecutionError')) {
+        console.warn('Failed to fetch supported tokens:', error.message);
+      }
       return [];
     }
   }, [publicClient, selectedToken]);
 
   // Check if token is supported
   const isTokenSupported = useCallback(async (token: string): Promise<boolean> => {
-    if (!publicClient) return false;
+    if (!publicClient || !QUIZELO_CONTRACT_ADDRESS) return false;
     try {
       return await publicClient.readContract({
-        address: QUIZELO_CONTRACT_ADDRESS,
+        address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
         abi: quizABI,
         functionName: 'isTokenSupported',
         args: [token as Address],
@@ -348,37 +389,70 @@ export const useQuizelo = () => {
     }
   }, [publicClient]);
 
-  // Approve ERC20 token
-  const approveToken = useCallback(async (token: Address, amount: bigint): Promise<boolean> => {
-    if (!address || !publicClient) return false;
+  // Approve ERC20 token - uses selected token as fee currency for MiniPay
+  const approveToken = useCallback(async (token: Address, amount: bigint, useMax = false): Promise<{ success: boolean; hash?: string; error?: Error }> => {
+    if (!address || !publicClient || !QUIZELO_CONTRACT_ADDRESS) {
+      return { success: false, error: new Error('Wallet or contract not available') };
+    }
+    
     try {
-      const txHash = await writeContractAsync({
-        address: token,
+      // Use MaxUint256 for unlimited approval if useMax is true, otherwise use the specific amount
+      const amountToApprove = useMax ? BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff') : amount;
+      
+      // Encode approve function data
+      const encodedData = encodeFunctionData({
         abi: erc20Abi,
         functionName: 'approve',
-        args: [QUIZELO_CONTRACT_ADDRESS, amount],
+        args: [QUIZELO_CONTRACT_ADDRESS as `0x${string}`, amountToApprove],
       });
+
+      // Get fee currency for MiniPay - use the selected token
+      const feeCurrency = isMiniPay() 
+        ? getFeeCurrencyForMiniPay(selectedToken)
+        : undefined;
+
+      // Use sendTransactionAsync to support feeCurrency parameter for MiniPay
+      const txHash = await sendTransactionAsyncForApprove({
+        to: token,
+        data: encodedData,
+        ...(feeCurrency && { feeCurrency: feeCurrency as `0x${string}` }),
+      } as Parameters<typeof sendTransactionAsyncForApprove>[0]);
       
-      if (txHash && publicClient) {
-        await publicClient.waitForTransactionReceipt({ hash: txHash });
-        return true;
+      if (!txHash) {
+        return { success: false, error: new Error('Transaction hash not received') };
       }
-      return false;
+      
+      // Wait for transaction confirmation
+      if (publicClient) {
+        const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+        if (receipt.status === 'success') {
+          return { success: true, hash: txHash };
+        } else {
+          return { success: false, error: new Error('Transaction failed') };
+        }
+      }
+      
+      return { success: true, hash: txHash };
     } catch (err) {
       console.error('Failed to approve token:', err);
-      return false;
+      const error = err as Error;
+      // Handle user rejection
+      if (error.message?.includes('User rejected') || error.message?.includes('User denied')) {
+        return { success: false, error: new Error('User rejected the transaction') };
+      }
+      return { success: false, error: error };
     }
-  }, [address, publicClient, writeContractAsync]);
+  }, [address, publicClient, selectedToken, sendTransactionAsyncForApprove]);
 
   // Check token allowance
   const checkTokenAllowance = useCallback(async (token: Address, owner: Address): Promise<bigint> => {
-    if (!publicClient) return 0n;
+    if (!publicClient || !QUIZELO_CONTRACT_ADDRESS) return 0n;
     try {
       return await publicClient.readContract({
         address: token,
         abi: erc20Abi,
         functionName: 'allowance',
-        args: [owner, QUIZELO_CONTRACT_ADDRESS],
+        args: [owner, QUIZELO_CONTRACT_ADDRESS as `0x${string}`],
       }) as bigint;
     } catch (err) {
       console.error('Failed to check token allowance:', err);
@@ -387,22 +461,32 @@ export const useQuizelo = () => {
   }, [publicClient]);
 
   // Main contract interaction functions
-  const startQuiz = async (token?: string) => {
+  const startQuiz = async (token: string, betAmount: bigint, onApprovalNeeded?: () => void, onApprovalComplete?: (hash?: string) => void) => {
     // Early validation checks
     if (!isConnected || !address) {
       showError('Please connect your wallet first');
       return { success: false, sessionId: null };
     }
 
-    if (!quizFee) {
-      showError('Quiz fee not loaded yet');
+    if (!minQuizFee) {
+      showError('Minimum quiz fee not loaded yet');
       return { success: false, sessionId: null };
     }
 
-    // Use selected token or first supported token
-    const tokenToUse = token || selectedToken || (supportedTokens.length > 0 ? supportedTokens[0] : null);
-    if (!tokenToUse) {
+    if (!token) {
       showError('No token selected. Please select a payment token.');
+      return { success: false, sessionId: null };
+    }
+
+    // Validate bet amount - the displayed entry fee (0.05) should be sent as-is
+    // MIN_QUIZ_FEE from contract is 0.005 tokens, so 0.05 is valid
+    // The contract will handle the final validation, we just do a basic check here
+    // Note: The contract's MIN_QUIZ_FEE is 5 * 1e15 (0.005 with 18 decimals)
+    // For 18-decimal tokens: 0.05 = 5e16 >= 5e15 ✓
+    // For 6-decimal tokens: The contract comparison might fail, but we send what's displayed
+    // Basic validation: betAmount should be positive
+    if (betAmount <= 0n) {
+      showError('Bet amount must be greater than zero');
       return { success: false, sessionId: null };
     }
 
@@ -421,23 +505,35 @@ export const useQuizelo = () => {
 
     try {
       // Check and approve token if needed
-      const tokenAddress = tokenToUse as Address;
-      const feeAmount = quizFee as bigint;
+      const tokenAddress = token as Address;
       const allowance = await checkTokenAllowance(tokenAddress, address);
-      if (allowance < feeAmount) {
-        showSuccess('Approving token...');
-        const approved = await approveToken(tokenAddress, feeAmount);
-        if (!approved) {
-          showError('Failed to approve token. Please try again.');
+      if (allowance < betAmount) {
+        // Notify that approval is needed
+        onApprovalNeeded?.();
+        showSuccess('🔓 Please approve token in your wallet...');
+        
+        const approved = await approveToken(tokenAddress, betAmount);
+        if (!approved.success) {
+          showError(approved.error?.message || 'Failed to approve token. Please try again.');
           return { success: false, sessionId: null };
         }
+        
+        // Notify that approval is complete with transaction hash
+        onApprovalComplete?.(approved.hash);
+        if (approved.hash) {
+          setTxHash(approved.hash);
+        }
+        showSuccess('✅ Token approved! Starting quiz...');
+        
+        // Small delay to ensure state is updated
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
 
       let sessionId: string | null = null;
 
       const result = await executeTransaction({
         functionName: 'startQuiz',
-        args: [tokenAddress],
+        args: [tokenAddress, betAmount],
         onSuccess: (txHash, receipt) => {
           setTxHash(txHash);
           showSuccess('🎯 Quiz started successfully!');
@@ -487,10 +583,10 @@ export const useQuizelo = () => {
 
     try {
       // Validate session before claiming
-      if (publicClient) {
+      if (publicClient && QUIZELO_CONTRACT_ADDRESS) {
         try {
           const session = await publicClient.readContract({
-            address: QUIZELO_CONTRACT_ADDRESS,
+            address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
             abi: quizABI,
             functionName: 'getQuizSession',
             args: [sessionId as `0x${string}`]
@@ -599,28 +695,60 @@ export const useQuizelo = () => {
     resetMessages();
 
     try {
-      // Approve token first
+      // Step 1: Check current allowance
       const allowance = await checkTokenAllowance(token, address);
+      
+      // Step 2: Approve if needed (use unlimited approval for better UX)
       if (allowance < amount) {
-        const approved = await approveToken(token, amount);
-        if (!approved) {
-          showError('Failed to approve token');
+        showSuccess('🔓 Step 1/2: Approving token... Please confirm in your wallet.');
+        setTxHash(''); // Clear previous hash
+        
+        const approveResult = await approveToken(token, amount, true); // Use unlimited approval
+        
+        if (!approveResult.success) {
+          if (approveResult.error?.message?.includes('User rejected')) {
+            showError('Approval was cancelled. Please try again.');
+          } else {
+            showError(`Failed to approve token: ${approveResult.error?.message || 'Unknown error'}`);
+          }
+          setIsLoading(false);
           return;
         }
+        
+        if (approveResult.hash) {
+          setTxHash(approveResult.hash);
+        }
+        
+        showSuccess('✅ Step 1/2: Approval confirmed! Proceeding to top up...');
+        
+        // Small delay to ensure state is updated
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
 
+      // Step 3: Execute top up transaction
+      showSuccess('💰 Step 2/2: Topping up contract... Please confirm in your wallet.');
+      setTxHash(''); // Clear approval hash, will be set by executeTransaction
+      
       await executeTransaction({
         functionName: 'topUpContract',
         args: [token, amount],
         onSuccess: (txHash) => {
           setTxHash(txHash);
-          showSuccess('💰 Contract topped up successfully!');
+          showSuccess('✅ Contract topped up successfully!');
           refetchContractStats(token);
         },
         onError: (error) => {
           showError('Failed to top up contract: ' + error.message);
         }
       });
+    } catch (error) {
+      console.error('Top up error:', error);
+      const errorMessage = (error as Error).message || 'Unknown error occurred';
+      if (errorMessage.includes('User rejected') || errorMessage.includes('User denied')) {
+        showError('Transaction was cancelled. Please try again.');
+      } else {
+        showError('Failed to top up contract: ' + errorMessage);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -680,13 +808,93 @@ export const useQuizelo = () => {
     }
   };
 
+  const addSupportedToken = async (token: Address) => {
+    if (!isConnected || !address) {
+      showError('Please connect your wallet first');
+      return;
+    }
+
+    setIsLoading(true);
+    resetMessages();
+
+    try {
+      await executeTransaction({
+        functionName: 'addSupportedToken',
+        args: [token],
+        onSuccess: (txHash) => {
+          setTxHash(txHash);
+          showSuccess('✅ Token added successfully!');
+          getSupportedTokens();
+        },
+        onError: (error) => {
+          showError('Failed to add token: ' + error.message);
+        }
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const removeSupportedToken = async (token: Address) => {
+    if (!isConnected || !address) {
+      showError('Please connect your wallet first');
+      return;
+    }
+
+    setIsLoading(true);
+    resetMessages();
+
+    try {
+      await executeTransaction({
+        functionName: 'removeSupportedToken',
+        args: [token],
+        onSuccess: (txHash) => {
+          setTxHash(txHash);
+          showSuccess('✅ Token removed successfully!');
+          getSupportedTokens();
+        },
+        onError: (error) => {
+          showError('Failed to remove token: ' + error.message);
+        }
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const adminResetLeaderboards = async () => {
+    if (!isConnected || !address) {
+      showError('Please connect your wallet first');
+      return;
+    }
+
+    setIsLoading(true);
+    resetMessages();
+
+    try {
+      await executeTransaction({
+        functionName: 'adminResetLeaderboards',
+        args: [],
+        onSuccess: (txHash) => {
+          setTxHash(txHash);
+          showSuccess('🔄 Leaderboards reset successfully!');
+        },
+        onError: (error) => {
+          showError('Failed to reset leaderboards: ' + error.message);
+        }
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Fetch quiz session details
   const getQuizSession = async (sessionId: string): Promise<QuizSession | null> => {
-    if (!publicClient) return null;
+    if (!publicClient || !QUIZELO_CONTRACT_ADDRESS) return null;
 
     try {
       const [user, paymentToken, startTime, expiryTime, active, claimed, score, reward, timeRemaining] = await publicClient.readContract({
-        address: QUIZELO_CONTRACT_ADDRESS,
+        address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
         abi: quizABI,
         functionName: 'getQuizSession',
         args: [sessionId as `0x${string}`]
@@ -710,15 +918,15 @@ export const useQuizelo = () => {
   };
 
   // Calculate potential reward
-  const calculatePotentialReward = useCallback(async (score: number): Promise<bigint> => {
-    if (!publicClient) return 0n;
+  const calculatePotentialReward = useCallback(async (score: number, betAmount: bigint): Promise<bigint> => {
+    if (!publicClient || !QUIZELO_CONTRACT_ADDRESS) return 0n;
 
     try {
       const reward = await publicClient.readContract({
-        address: QUIZELO_CONTRACT_ADDRESS,
+        address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
         abi: quizABI,
         functionName: 'calculatePotentialReward',
-        args: [BigInt(score)],
+        args: [BigInt(score), betAmount],
       }) as bigint;
 
       return reward;
@@ -730,11 +938,11 @@ export const useQuizelo = () => {
 
   // Check if contract can operate
   const canOperateQuizzes = useCallback(async (token: Address): Promise<boolean> => {
-    if (!publicClient) return false;
+    if (!publicClient || !QUIZELO_CONTRACT_ADDRESS) return false;
 
     try {
       const canOperate = await publicClient.readContract({
-        address: QUIZELO_CONTRACT_ADDRESS,
+        address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
         abi: quizABI,
         functionName: 'canOperateQuizzes',
         args: [token],
@@ -749,11 +957,18 @@ export const useQuizelo = () => {
 
   // Get user statistics
   const getUserStats = useCallback(async (userAddress: Address): Promise<UserStats | null> => {
-    if (!publicClient) return null;
+    if (!publicClient || !QUIZELO_CONTRACT_ADDRESS) {
+      return null;
+    }
+
+    if (!isConnected || !address) {
+      // Silently return null if wallet not connected - this is expected
+      return null;
+    }
 
     try {
       const stats = await publicClient.readContract({
-        address: QUIZELO_CONTRACT_ADDRESS,
+        address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
         abi: quizABI,
         functionName: 'getUserStats',
         args: [userAddress],
@@ -770,18 +985,27 @@ export const useQuizelo = () => {
         lastActivity: Number(stats[7])
       };
     } catch (err) {
-      console.error('Failed to fetch user stats:', err);
+      // Only log unexpected errors, not connection issues
+      const error = err as Error;
+      if (error?.message && !error.message.includes('wallet is not yet connected') && !error.message.includes('HTTP request failed')) {
+        console.warn('Failed to fetch user stats:', error.message);
+      }
       return null;
     }
-  }, [publicClient]);
+  }, [publicClient, isConnected, address]);
 
   // Get user quiz history
   const getUserQuizHistory = useCallback(async (userAddress: Address, limit: number = 0): Promise<QuizHistory[]> => {
-    if (!publicClient) return [];
+    if (!publicClient || !QUIZELO_CONTRACT_ADDRESS) return [];
+
+    if (!isConnected || !address) {
+      // Silently return empty array if wallet not connected
+      return [];
+    }
 
     try {
       const history = await publicClient.readContract({
-        address: QUIZELO_CONTRACT_ADDRESS,
+        address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
         abi: quizABI,
         functionName: 'getUserQuizHistory',
         args: [userAddress, BigInt(limit)],
@@ -794,18 +1018,32 @@ export const useQuizelo = () => {
         timestamp: Number(timestamp)
       }));
     } catch (err) {
-      console.error('Failed to fetch quiz history:', err);
+      // Only log error if it's not a network/contract issue or connection issue
+      const error = err as Error;
+      if (error?.message && 
+          !error.message.includes('HTTP request failed') && 
+          !error.message.includes('wallet is not yet connected')) {
+        console.warn('Failed to fetch user quiz history:', error.message);
+      }
       return [];
     }
-  }, [publicClient]);
+  }, [publicClient, isConnected, address]);
 
   // Get leaderboards
   const getTopScoresLeaderboard = useCallback(async (limit: number = 0): Promise<LeaderboardEntry[]> => {
-    if (!publicClient) return [];
+    if (!publicClient) {
+      console.warn('Public client not available');
+      return [];
+    }
+
+    if (!QUIZELO_CONTRACT_ADDRESS) {
+      console.warn('Contract address not configured');
+      return [];
+    }
 
     try {
       const entries = await publicClient.readContract({
-        address: QUIZELO_CONTRACT_ADDRESS,
+        address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
         abi: quizABI,
         functionName: 'getTopScoresLeaderboard',
         args: [BigInt(limit)],
@@ -817,17 +1055,29 @@ export const useQuizelo = () => {
         timestamp: Number(timestamp)
       }));
     } catch (err) {
-      console.error('Failed to fetch top scores leaderboard:', err);
+      // Only log error if it's not a network/contract issue
+      const error = err as Error;
+      if (error.message && !error.message.includes('HTTP request failed')) {
+        console.error('Failed to fetch top scores leaderboard:', err);
+      }
       return [];
     }
   }, [publicClient]);
 
   const getTopEarnersLeaderboard = useCallback(async (limit: number = 0): Promise<LeaderboardEntry[]> => {
-    if (!publicClient) return [];
+    if (!publicClient) {
+      console.warn('Public client not available');
+      return [];
+    }
+
+    if (!QUIZELO_CONTRACT_ADDRESS) {
+      console.warn('Contract address not configured');
+      return [];
+    }
 
     try {
       const entries = await publicClient.readContract({
-        address: QUIZELO_CONTRACT_ADDRESS,
+        address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
         abi: quizABI,
         functionName: 'getTopEarnersLeaderboard',
         args: [BigInt(limit)],
@@ -839,17 +1089,29 @@ export const useQuizelo = () => {
         timestamp: Number(timestamp)
       }));
     } catch (err) {
-      console.error('Failed to fetch top earners leaderboard:', err);
+      // Only log error if it's not a network/contract issue
+      const error = err as Error;
+      if (error.message && !error.message.includes('HTTP request failed')) {
+        console.error('Failed to fetch top earners leaderboard:', err);
+      }
       return [];
     }
   }, [publicClient]);
 
   const getTopStreaksLeaderboard = useCallback(async (limit: number = 0): Promise<LeaderboardEntry[]> => {
-    if (!publicClient) return [];
+    if (!publicClient) {
+      console.warn('Public client not available');
+      return [];
+    }
+
+    if (!QUIZELO_CONTRACT_ADDRESS) {
+      console.warn('Contract address not configured');
+      return [];
+    }
 
     try {
       const entries = await publicClient.readContract({
-        address: QUIZELO_CONTRACT_ADDRESS,
+        address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
         abi: quizABI,
         functionName: 'getTopStreaksLeaderboard',
         args: [BigInt(limit)],
@@ -861,18 +1123,22 @@ export const useQuizelo = () => {
         timestamp: Number(timestamp)
       }));
     } catch (err) {
-      console.error('Failed to fetch top streaks leaderboard:', err);
+      // Only log error if it's not a network/contract issue
+      const error = err as Error;
+      if (error.message && !error.message.includes('HTTP request failed')) {
+        console.error('Failed to fetch top streaks leaderboard:', err);
+      }
       return [];
     }
   }, [publicClient]);
 
-  // Get user ranks
+  // Get user ranks - these are public functions, don't require connection
   const getUserScoreRank = useCallback(async (userAddress: Address): Promise<number> => {
-    if (!publicClient) return 0;
+    if (!publicClient || !QUIZELO_CONTRACT_ADDRESS) return 0;
 
     try {
       const rank = await publicClient.readContract({
-        address: QUIZELO_CONTRACT_ADDRESS,
+        address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
         abi: quizABI,
         functionName: 'getUserScoreRank',
         args: [userAddress],
@@ -880,17 +1146,20 @@ export const useQuizelo = () => {
 
       return Number(rank);
     } catch (err) {
-      console.error('Failed to fetch user score rank:', err);
+      const error = err as Error;
+      if (error?.message && !error.message.includes('HTTP request failed') && !error.message.includes('wallet is not yet connected')) {
+        console.warn('Failed to fetch user score rank:', error.message);
+      }
       return 0;
     }
   }, [publicClient]);
 
   const getUserEarnerRank = useCallback(async (userAddress: Address): Promise<number> => {
-    if (!publicClient) return 0;
+    if (!publicClient || !QUIZELO_CONTRACT_ADDRESS) return 0;
 
     try {
       const rank = await publicClient.readContract({
-        address: QUIZELO_CONTRACT_ADDRESS,
+        address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
         abi: quizABI,
         functionName: 'getUserEarnerRank',
         args: [userAddress],
@@ -898,17 +1167,20 @@ export const useQuizelo = () => {
 
       return Number(rank);
     } catch (err) {
-      console.error('Failed to fetch user earner rank:', err);
+      const error = err as Error;
+      if (error?.message && !error.message.includes('HTTP request failed') && !error.message.includes('wallet is not yet connected')) {
+        console.warn('Failed to fetch user earner rank:', error.message);
+      }
       return 0;
     }
   }, [publicClient]);
 
   const getUserStreakRank = useCallback(async (userAddress: Address): Promise<number> => {
-    if (!publicClient) return 0;
+    if (!publicClient || !QUIZELO_CONTRACT_ADDRESS) return 0;
 
     try {
       const rank = await publicClient.readContract({
-        address: QUIZELO_CONTRACT_ADDRESS,
+        address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
         abi: quizABI,
         functionName: 'getUserStreakRank',
         args: [userAddress],
@@ -916,18 +1188,29 @@ export const useQuizelo = () => {
 
       return Number(rank);
     } catch (err) {
-      console.error('Failed to fetch user streak rank:', err);
+      const error = err as Error;
+      if (error?.message && !error.message.includes('HTTP request failed') && !error.message.includes('wallet is not yet connected')) {
+        console.warn('Failed to fetch user streak rank:', error.message);
+      }
       return 0;
     }
   }, [publicClient]);
 
   // Get contract stats for a token
   const getContractStats = useCallback(async (token: Address): Promise<ContractStats | null> => {
-    if (!publicClient) return null;
+    if (!publicClient) {
+      console.warn('Public client not available');
+      return null;
+    }
+
+    if (!QUIZELO_CONTRACT_ADDRESS) {
+      console.warn('Contract address not configured');
+      return null;
+    }
 
     try {
       const stats = await publicClient.readContract({
-        address: QUIZELO_CONTRACT_ADDRESS,
+        address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
         abi: quizABI,
         functionName: 'getContractStats',
         args: [token],
@@ -943,7 +1226,11 @@ export const useQuizelo = () => {
         totalFees: stats[6]
       };
     } catch (err) {
-      console.error('Failed to fetch contract stats:', err);
+      // Only log error if it's not a network/contract issue
+      const error = err as Error;
+      if (error.message && !error.message.includes('HTTP request failed')) {
+        console.error('Failed to fetch contract stats:', err);
+      }
       return null;
     }
   }, [publicClient]);
@@ -966,35 +1253,59 @@ export const useQuizelo = () => {
 
   // Refetch user stats
   const refetchUserStats = useCallback(async () => {
-    if (!address) return;
-    const stats = await getUserStats(address as Address);
-    if (stats) {
-      setUserStats(stats);
+    if (!address || !isConnected) {
+      // Reset stats when disconnected
+      setUserStats(null);
+      return;
     }
-  }, [address, getUserStats]);
+    
+    try {
+      const stats = await getUserStats(address as Address);
+      if (stats) {
+        setUserStats(stats);
+      }
+    } catch (err) {
+      // Silently handle errors - they're already handled in getUserStats
+      console.warn('Failed to refetch user stats:', err);
+    }
+  }, [address, isConnected, getUserStats]);
 
   // Refetch active quiz takers
   const refetchActiveQuizTakers = useCallback(async () => {
-    if (!publicClient) return;
+    if (!publicClient || !QUIZELO_CONTRACT_ADDRESS) return;
     try {
       const takers = await publicClient.readContract({
-        address: QUIZELO_CONTRACT_ADDRESS,
+        address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
         abi: quizABI,
         functionName: 'getCurrentQuizTakers',
       }) as string[];
-      setActiveQuizTakers(takers);
+      
+      // Only update if the data actually changed to prevent infinite loops
+      setActiveQuizTakers((prev) => {
+        const prevStr = JSON.stringify(prev);
+        const newStr = JSON.stringify(takers);
+        if (prevStr !== newStr) {
+          return takers;
+        }
+        return prev;
+      });
     } catch (err) {
-      console.error('Failed to fetch active quiz takers:', err);
+      const error = err as Error;
+      if (error?.message && !error.message.includes('HTTP request failed') && !error.message.includes('wallet is not yet connected')) {
+        console.warn('Failed to fetch active quiz takers:', error.message);
+      }
     }
   }, [publicClient]);
 
   // Get global stats
   const getGlobalStats = useCallback(async (): Promise<GlobalStats | null> => {
-    if (!publicClient) return null;
+    if (!publicClient || !QUIZELO_CONTRACT_ADDRESS) {
+      return null;
+    }
 
     try {
       const stats = await publicClient.readContract({
-        address: QUIZELO_CONTRACT_ADDRESS,
+        address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
         abi: quizABI,
         functionName: 'getGlobalStats',
       }) as [bigint, bigint, bigint, bigint, bigint];
@@ -1007,35 +1318,61 @@ export const useQuizelo = () => {
         averageScore: Number(stats[4])
       };
     } catch (err) {
-      console.error('Failed to fetch global stats:', err);
+      // Silently handle errors - network issues are expected
+      const error = err as Error;
+      if (error?.message && !error.message.includes('HTTP request failed') && !error.message.includes('Cannot read properties')) {
+        console.warn('Failed to fetch global stats:', error.message);
+      }
       return null;
     }
   }, [publicClient]);
 
-  // Get token balance
+  // Get contract token balance
   const getTokenBalance = useCallback(async (token: Address): Promise<bigint> => {
-    if (!publicClient) return 0n;
+    if (!publicClient || !QUIZELO_CONTRACT_ADDRESS) return 0n;
 
     try {
       return await publicClient.readContract({
-        address: QUIZELO_CONTRACT_ADDRESS,
+        address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
         abi: quizABI,
         functionName: 'getTokenBalance',
         args: [token],
       }) as bigint;
     } catch (err) {
-      console.error('Failed to fetch token balance:', err);
+      const error = err as Error;
+      if (error.message && !error.message.includes('HTTP request failed')) {
+        console.error('Failed to fetch token balance:', err);
+      }
       return 0n;
     }
   }, [publicClient]);
 
+  // Get user's token balance (from their wallet)
+  const getUserTokenBalance = useCallback(async (token: Address, userAddress?: Address): Promise<bigint> => {
+    if (!publicClient) return 0n;
+    const user = userAddress || address;
+    if (!user) return 0n;
+
+    try {
+      return await publicClient.readContract({
+        address: token,
+        abi: erc20Abi,
+        functionName: 'balanceOf',
+        args: [user as Address],
+      }) as bigint;
+    } catch (err) {
+      console.error('Failed to fetch user token balance:', err);
+      return 0n;
+    }
+  }, [publicClient, address]);
+
   // Compare users
   const compareUsers = useCallback(async (user1: Address, user2: Address): Promise<[UserStats | null, UserStats | null]> => {
-    if (!publicClient) return [null, null];
+    if (!publicClient || !QUIZELO_CONTRACT_ADDRESS) return [null, null];
 
     try {
       const [stats1, stats2] = await publicClient.readContract({
-        address: QUIZELO_CONTRACT_ADDRESS,
+        address: QUIZELO_CONTRACT_ADDRESS as `0x${string}`,
         abi: quizABI,
         functionName: 'compareUsers',
         args: [user1, user2],
@@ -1083,10 +1420,29 @@ export const useQuizelo = () => {
   // Effects to update state when contract data changes
   useEffect(() => {
     if (userInfoData) {
-      const [dailyCount, lastQuizTime, nextQuizTime, wonToday, canQuiz] = userInfoData as [bigint, bigint, bigint, bigint, boolean];
+      // Handle both tuple (array) and struct (object) formats
+      let dailyCount: bigint;
+      let lastQuiz: bigint;
+      let nextQuizTime: bigint;
+      let wonToday: boolean;
+      let canQuiz: boolean;
+
+      if (Array.isArray(userInfoData)) {
+        // Tuple format: [dailyCount, lastQuiz, nextQuizTime, wonToday, canQuiz]
+        [dailyCount, lastQuiz, nextQuizTime, wonToday, canQuiz] = userInfoData as [bigint, bigint, bigint, boolean, boolean];
+      } else {
+        // Struct format: { dailyCount, lastQuiz, nextQuizTime, wonToday, canQuiz }
+        const data = userInfoData as { dailyCount: bigint; lastQuiz: bigint; nextQuizTime: bigint; wonToday: boolean; canQuiz: boolean };
+        dailyCount = data.dailyCount;
+        lastQuiz = data.lastQuiz;
+        nextQuizTime = data.nextQuizTime;
+        wonToday = data.wonToday;
+        canQuiz = data.canQuiz;
+      }
+
       setUserInfo({
         dailyCount: Number(dailyCount),
-        lastQuizTime: Number(lastQuizTime),
+        lastQuizTime: Number(lastQuiz),
         nextQuizTime: Number(nextQuizTime),
         wonToday: Boolean(wonToday),
         canQuiz
@@ -1094,26 +1450,57 @@ export const useQuizelo = () => {
     }
   }, [userInfoData]);
 
-  // Load supported tokens on mount
+  // Load supported tokens on mount - with error handling
   useEffect(() => {
-    getSupportedTokens();
-  }, [getSupportedTokens]);
+    // Only load if contract address is configured
+    if (QUIZELO_CONTRACT_ADDRESS && publicClient) {
+      getSupportedTokens().catch((err) => {
+        // Silently handle errors - they're expected if contract isn't deployed or RPC is down
+        console.warn('Failed to load supported tokens:', err);
+      });
+    }
+  }, [getSupportedTokens, publicClient]);
 
-  // Auto-refresh data
+  // Auto-refresh data periodically - only when connected
   useEffect(() => {
-    if (!address) return;
+    if (!address || !isConnected) {
+      // Clear user-specific data when disconnected
+      setUserStats(null);
+      setUserInfo(null);
+      return;
+    }
 
-    const interval = setInterval(() => {
-      refetchUserInfo();
-      if (selectedToken) {
-        refetchContractStats(selectedToken as Address);
+    // Initial load
+    const loadData = async () => {
+      try {
+        await Promise.all([
+          refetchUserInfo().catch(() => null),
+          selectedToken ? refetchContractStats(selectedToken as Address).catch(() => null) : Promise.resolve(),
+          refetchActiveQuizTakers().catch(() => null),
+          refetchUserStats().catch(() => null),
+        ]);
+      } catch (err) {
+        // Silently handle errors
+        console.warn('Failed to load initial data:', err);
       }
-      refetchActiveQuizTakers();
-      refetchUserStats();
+    };
+
+    loadData();
+
+    // Set up periodic refresh
+    const interval = setInterval(() => {
+      if (address && isConnected) {
+        refetchUserInfo().catch(() => null);
+        if (selectedToken) {
+          refetchContractStats(selectedToken as Address).catch(() => null);
+        }
+        refetchActiveQuizTakers().catch(() => null);
+        refetchUserStats().catch(() => null);
+      }
     }, 30000); // Refresh every 30 seconds
 
     return () => clearInterval(interval);
-  }, [address, selectedToken, refetchUserInfo, refetchContractStats, refetchActiveQuizTakers, refetchUserStats]);
+  }, [address, isConnected, selectedToken, refetchUserInfo, refetchContractStats, refetchActiveQuizTakers, refetchUserStats]);
 
   return {
     // State
@@ -1136,7 +1523,7 @@ export const useQuizelo = () => {
     isOnCorrectNetwork: currentChainId === targetChainId,
 
     // Constants from contract
-    quizFee,
+    minQuizFee,
     quizDuration: Number(quizDuration || 0n),
     cooldownPeriod: Number(cooldownPeriod || 0n),
     maxDailyQuizzes: Number(maxDailyQuizzes || 0n),
@@ -1156,6 +1543,7 @@ export const useQuizelo = () => {
     approveToken,
     checkTokenAllowance,
     getTokenBalance,
+    getUserTokenBalance,
 
     // User stats functions
     getUserStats,
@@ -1182,6 +1570,9 @@ export const useQuizelo = () => {
     topUpContract,
     adminEmergencyDrain,
     adminCleanupExpired,
+    addSupportedToken,
+    removeSupportedToken,
+    adminResetLeaderboards,
 
     // Utility functions
     switchToCorrectNetwork,

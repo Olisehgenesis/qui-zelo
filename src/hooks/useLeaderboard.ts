@@ -32,7 +32,16 @@ export const useLeaderboard = () => {
 
   // Fetch all leaderboard data from contract
   const fetchLeaderboardData = useCallback(async () => {
+    // Check if all required functions are available
     if (!quizelo.getTopScoresLeaderboard || !quizelo.getTopEarnersLeaderboard || !quizelo.getTopStreaksLeaderboard) {
+      console.warn('Leaderboard functions not available yet');
+      return;
+    }
+
+    // Check if contract address is set
+    if (!process.env.NEXT_PUBLIC_QUIZELO_CONTRACT_ADDRESS) {
+      console.warn('Contract address not configured');
+      setError('Contract address not configured');
       return;
     }
 
@@ -40,13 +49,31 @@ export const useLeaderboard = () => {
     setError('');
 
     try {
-      // Fetch all three leaderboards
-      const [scores, earners, streaks, globalStats] = await Promise.all([
-        quizelo.getTopScoresLeaderboard(100),
-        quizelo.getTopEarnersLeaderboard(100),
-        quizelo.getTopStreaksLeaderboard(100),
-        quizelo.getGlobalStats()
+      // Fetch all three leaderboards with individual error handling
+      const results = await Promise.allSettled([
+        quizelo.getTopScoresLeaderboard?.(100) || Promise.resolve([]),
+        quizelo.getTopEarnersLeaderboard?.(100) || Promise.resolve([]),
+        quizelo.getTopStreaksLeaderboard?.(100) || Promise.resolve([]),
+        quizelo.getGlobalStats?.() || Promise.resolve(null)
       ]);
+
+      // Handle each result individually
+      const scores = results[0].status === 'fulfilled' ? results[0].value : [];
+      const earners = results[1].status === 'fulfilled' ? results[1].value : [];
+      const streaks = results[2].status === 'fulfilled' ? results[2].value : [];
+      const globalStats = results[3].status === 'fulfilled' ? results[3].value : null;
+
+      // Log any failures (but only for unexpected errors)
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          const names = ['scores', 'earners', 'streaks', 'globalStats'];
+          const error = result.reason as Error;
+          // Only log if it's not a network/HTTP error
+          if (error?.message && !error.message.includes('HTTP request failed') && !error.message.includes('Cannot read properties')) {
+            console.warn(`Failed to fetch ${names[index]}:`, error.message);
+          }
+        }
+      });
 
       // Add ranks to entries
       const scoresWithRanks = scores.map((entry, index) => ({ ...entry, rank: index + 1 }));
@@ -139,16 +166,27 @@ export const useLeaderboard = () => {
     return topEarners.slice(0, limit);
   }, [topEarners]);
 
-  // Auto-refresh data
+  // Auto-refresh data - only if contract is ready
   useEffect(() => {
-    fetchLeaderboardData();
+    // Don't fetch if contract functions aren't ready
+    if (!quizelo.getTopScoresLeaderboard || !quizelo.getTopEarnersLeaderboard || !quizelo.getTopStreaksLeaderboard) {
+      return;
+    }
+
+    // Small delay to ensure everything is initialized
+    const timeoutId = setTimeout(() => {
+      fetchLeaderboardData();
+    }, 1000);
     
     const interval = setInterval(() => {
       fetchLeaderboardData();
     }, 60000); // Refresh every minute
 
-    return () => clearInterval(interval);
-  }, [fetchLeaderboardData]);
+    return () => {
+      clearTimeout(timeoutId);
+      clearInterval(interval);
+    };
+  }, [fetchLeaderboardData, quizelo.getTopScoresLeaderboard, quizelo.getTopEarnersLeaderboard, quizelo.getTopStreaksLeaderboard]);
 
   // Format functions
   const formatEarnings = useCallback((earnings: bigint): string => {

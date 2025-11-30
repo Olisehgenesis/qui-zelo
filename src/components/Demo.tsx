@@ -1,39 +1,42 @@
-import { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Home, 
-  Trophy, 
-  User, 
-  Play, 
-  Wallet, 
-  X, 
-  Clock, 
-  Coins, 
-  CheckCircle,
-  AlertCircle,
-  ChevronRight,
-  Loader2,
-  Sparkles,
-  Brain,
-  RefreshCw,
-} from 'lucide-react';
+'use client';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { celo } from 'viem/chains';
-import { useSwitchChain, useChainId, useAccount, useConnect } from 'wagmi';
+import { useSwitchChain, useChainId, useAccount } from 'wagmi';
 
-import { injected } from 'wagmi/connectors';
-import { sdk } from '@farcaster/frame-sdk';
-import { isMiniPay } from '~/lib/minipay';
-import { FeeCurrencyModal } from './modals/FeeCurrencyModal';
-
-// Import your hooks
+// Hooks
 import { useQuizelo } from '../hooks/useQuizelo';
 import { useTopics, TopicWithMetadata } from '../hooks/useTopics';
 import { useAI } from '../hooks/useAI';
 import { useLeaderboard } from '../hooks/useLeaderboard';
-import farcasterFrame from '@farcaster/frame-wagmi-connector';
+import { useAppContext } from '../contexts/AppContext';
+import { useSDK } from '../hooks/useSDK';
+import { useAutoConnect } from '../hooks/useAutoConnect';
+
+// Components - Pages
 import { HomeContent } from './pages/HomeContent';
 import { LeaderboardContent } from './pages/LeaderboardContent';
 import { ProfileContent } from './pages/ProfileContent';
+import { QuizInterface } from './pages/QuizInterface';
+import { ResultsPage } from './pages/ResultsPage';
+
+// Components - Modals
+import {
+  FeeCurrencyModal,
+  QuizInfoModal,
+  QuizGenerationModal,
+  TransactionModal,
+  NetworkCheckModal,
+  ConnectWalletModal,
+  TopicModal,
+} from './modals';
+
+// Components - Navigation
+import { BottomNavigation, StartQuizButton } from './navigation';
+
+// Components - UI
+import { LoadingSpinner } from './ui/LoadingSpinner';
+import { StatusDisplay } from './StatusDisplay';
 
 interface ScoreResult {
   percentage: number;
@@ -49,499 +52,8 @@ interface QuestionResult {
   isLastQuestion: boolean;
 }
 
-interface QuizInfoModalProps {
-  isVisible: boolean;
-  onClose: () => void;
-  onStart: () => void;
-  quizFee: string;
-  potentialWinnings: string;
-  isLoading: boolean;
-}
-
-interface QuizGenerationModalProps {
-  isVisible: boolean;
-  topic: TopicWithMetadata | null;
-}
-
-interface TransactionModalProps {
-  isVisible: boolean;
-  status: 'pending' | 'success' | 'error';
-  txHash: string;
-  onClose: () => void;
-}
-
-interface NetworkCheckModalProps {
-  showNetworkModal: boolean;
-  isSwitchingNetwork: boolean;
-  networkError: string;
-  switchToCelo: () => void;
-  setShowNetworkModal: (show: boolean) => void;
-}
-
-// Simple Loading Spinner without excessive animations
-const LoadingSpinner = ({ size = 6, color = 'text-amber-600' }) => (
-  <div className="relative">
-    <Loader2 className={`w-${size} h-${size} ${color} animate-spin`} />
-  </div>
-);
-
-// Simplified Timer Component
-const HorizontalTimer = ({ timeLeft, totalTime = 15 }: { timeLeft: number, totalTime?: number }) => {
-  const progress = (timeLeft / totalTime) * 100;
-  
-  const getTimerColor = () => {
-    if (timeLeft <= 3) return 'from-red-400 to-orange-500';
-    if (timeLeft <= 7) return 'from-orange-400 to-amber-500';
-    return 'from-emerald-400 to-teal-500';
-  };
-
-  return (
-    <div className="w-full mb-6">
-      <div className="flex justify-between items-center mb-3">
-        <div className="flex items-center space-x-2">
-          <Clock className="w-4 h-4 text-stone-600" />
-          <span className="text-sm font-bold text-stone-600">⏰ Time Left</span>
-        </div>
-        <span className={`font-black text-xl ${timeLeft <= 5 ? 'text-red-500' : 'text-stone-800'}`}>
-          {timeLeft}s
-        </span>
-      </div>
-      
-      <div className="relative w-full bg-stone-200/80 rounded-full h-4 overflow-hidden shadow-inner backdrop-blur-sm">
-        <div 
-          className={`h-full bg-gradient-to-r ${getTimerColor()} rounded-full shadow-lg transition-all duration-1000 ease-out`}
-          style={{ width: `${progress}%` }}
-        >
-          {timeLeft <= 5 && (
-            <div className="absolute inset-0 bg-red-400/50 animate-pulse" />
-          )}
-        </div>
-      </div>
-      
-      {timeLeft <= 5 && (
-        <div className="text-center mt-3">
-          <span className="text-red-500 font-bold text-sm flex items-center justify-center space-x-2">
-            <Sparkles className="w-4 h-4" />
-            <span>⚡ Time running out!</span>
-            <Sparkles className="w-4 h-4" />
-          </span>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// Simplified Question Result Component
-const QuestionResult = ({ result, correctAnswer, userAnswer, onContinue, isLastQuestion }: { result: QuestionResult, correctAnswer: string, userAnswer: string, onContinue: () => void, isLastQuestion: boolean }) => {
-  return (
-    <AnimatePresence>
-      <motion.div 
-        className="fixed inset-0 bg-black/40 backdrop-blur-lg flex items-center justify-center p-4 z-50"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-      >
-
-        <motion.div 
-          className={`bg-gradient-to-br from-stone-50 to-amber-50/80 backdrop-blur-xl rounded-3xl p-6 sm:p-8 w-full max-w-md mx-4 shadow-2xl border-2 ${
-            result.isCorrect ? 'border-emerald-300/60' : 'border-orange-300/60'
-          } relative overflow-hidden`}
-          initial={{ scale: 0.8, y: 50, opacity: 0 }}
-          animate={{ scale: 1, y: 0, opacity: 1 }}
-          exit={{ scale: 0.8, y: -50, opacity: 0 }}
-          transition={{ type: "spring", stiffness: 300, damping: 25 }}
-        >
-          <div className="relative text-center">
-            <div 
-              className={`w-20 h-20 mx-auto mb-6 rounded-full flex items-center justify-center shadow-2xl ${
-                result.isCorrect 
-                  ? 'bg-gradient-to-br from-emerald-400 via-teal-500 to-green-500' 
-                  : 'bg-gradient-to-br from-orange-400 via-amber-500 to-red-500'
-              }`}
-            >
-              {result.isCorrect ? (
-                <CheckCircle className="w-10 h-10 text-white" />
-              ) : (
-                <X className="w-10 h-10 text-white" />
-              )}
-            </div>
-            
-            <h3 className={`text-2xl font-black mb-4 ${
-              result.isCorrect ? 'text-emerald-700' : 'text-orange-700'
-            }`}>
-              {result.isCorrect ? '🎉 Excellent!' : '🎯 Close One!'}
-            </h3>
-            
-            <div className={`p-4 rounded-2xl mb-6 border-2 backdrop-blur-sm ${
-              result.isCorrect 
-                ? 'bg-emerald-50/80 border-emerald-200/60' 
-                : 'bg-orange-50/80 border-orange-200/60'
-            }`}>
-              {!result.isCorrect && (
-                <p className="text-sm text-stone-600 mb-2">
-                  <span className="font-bold">❌ Your answer:</span> {userAnswer}
-                </p>
-              )}
-              <p className="text-sm text-stone-600 mb-3">
-                <span className="font-bold">✅ Correct answer:</span> {correctAnswer}
-              </p>
-              <p className="text-sm text-stone-700 leading-relaxed">
-                💡 {result.explanation}
-              </p>
-            </div>
-            
-            <button
-              onClick={onContinue}
-              className={`w-full py-4 rounded-[0.4em] font-bold text-white text-lg transition-all border-[0.2em] border-[#050505] ${
-                result.isCorrect
-                  ? 'bg-[#10b981] hover:bg-[#059669] shadow-[0.3em_0.3em_0_#000000] hover:shadow-[0.4em_0.4em_0_#000000] hover:-translate-x-[0.1em] hover:-translate-y-[0.1em] active:translate-x-[0.1em] active:translate-y-[0.1em] active:shadow-[0.15em_0.15em_0_#000000]'
-                  : 'bg-[#f59e0b] hover:bg-[#d97706] shadow-[0.3em_0.3em_0_#000000] hover:shadow-[0.4em_0.4em_0_#000000] hover:-translate-x-[0.1em] hover:-translate-y-[0.1em] active:translate-x-[0.1em] active:translate-y-[0.1em] active:shadow-[0.15em_0.15em_0_#000000]'
-              }`}
-            >
-              <div className="flex items-center justify-center space-x-2">
-                {isLastQuestion ? (
-                  <>
-                    <Trophy className="w-5 h-5" />
-                    <span>🏆 View Results</span>
-                  </>
-                ) : (
-                  <>
-                    <ChevronRight className="w-5 h-5" />
-                    <span>⚡ Continue Quest</span>
-                  </>
-                )}
-              </div>
-            </button>
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
-  );
-};
-
-// Simplified Quiz Info Modal
-const QuizInfoModal = ({ 
-  isVisible, 
-  onClose, 
-  onStart, 
-  quizFee, 
-  potentialWinnings,
-  isLoading 
-}: QuizInfoModalProps) => {
-  if (!isVisible) return null;
-
-  return (
-    <AnimatePresence>
-      <motion.div 
-        className="fixed inset-0 bg-gradient-to-br from-stone-900/20 via-amber-900/20 to-orange-900/20 backdrop-blur-lg flex items-center justify-center p-4 z-50"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-      >
-        <motion.div 
-          className="bg-gradient-to-br from-stone-50 to-amber-50/90 backdrop-blur-xl rounded-3xl p-6 sm:p-8 w-full max-w-sm mx-4 shadow-2xl border-2 border-amber-200/60 relative overflow-hidden"
-          initial={{ scale: 0.8, y: 50, opacity: 0 }}
-          animate={{ scale: 1, y: 0, opacity: 1 }}
-          exit={{ scale: 0.8, y: -50, opacity: 0 }}
-          transition={{ type: "spring", stiffness: 300, damping: 25 }}
-        >
-          <div className="relative text-center">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 shadow-2xl">
-              <Coins className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
-            </div>
-            
-            <h3 className="text-xl sm:text-2xl font-black bg-gradient-to-r from-amber-700 via-orange-700 to-red-700 bg-clip-text text-transparent mb-3">
-              🎮 Ready to Quest?
-            </h3>
-            
-            <div className="bg-gradient-to-r from-orange-50/80 to-red-50/80 rounded-xl p-4 mb-4 border border-orange-200/60 backdrop-blur-sm">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-bold text-stone-600">💰 Entry Fee</span>
-                <span className="text-sm font-black text-orange-700">{quizFee} CELO</span>
-              </div>
-              <p className="text-xs text-stone-500">This amount will be deducted from your wallet</p>
-            </div>
-            
-            <div className="bg-gradient-to-r from-emerald-50/80 to-teal-50/80 rounded-xl p-4 mb-6 border border-emerald-200/60 backdrop-blur-sm">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-bold text-stone-600">🏆 Potential Winnings</span>
-                <span className="text-sm font-black text-emerald-700">{potentialWinnings} CELO</span>
-              </div>
-              <p className="text-xs text-stone-500">Win by scoring 60% or higher!</p>
-            </div>
-            
-            <div className="space-y-3">
-              <button
-                onClick={onStart}
-                disabled={isLoading}
-                className="w-full bg-[#7C65C1] hover:bg-[#6952A3] text-white py-3 sm:py-4 rounded-[0.4em] font-bold border-[0.2em] border-[#050505] shadow-[0.3em_0.3em_0_#000000] hover:shadow-[0.4em_0.4em_0_#000000] hover:-translate-x-[0.1em] hover:-translate-y-[0.1em] active:translate-x-[0.1em] active:translate-y-[0.1em] active:shadow-[0.15em_0.15em_0_#000000] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-[0.3em_0.3em_0_#000000] flex items-center justify-center space-x-3 uppercase tracking-[0.05em]"
-              >
-                {isLoading ? (
-                  <LoadingSpinner size={6} color="text-white" />
-                ) : (
-                  <>
-                    <Play className="w-5 h-5" />
-                    <span>🚀 Start Quest</span>
-                  </>
-                )}
-              </button>
-              
-              <button
-                onClick={onClose}
-                className="w-full text-stone-500 py-2 text-sm hover:text-stone-600 transition-colors"
-              >
-                ⏰ Maybe later
-              </button>
-            </div>
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
-  );
-};
-
-// Simplified Quiz Generation Modal
-const QuizGenerationModal = ({ isVisible, topic }: QuizGenerationModalProps) => {
-  if (!isVisible) return null;
-  
-  return (
-    <AnimatePresence>
-      <motion.div 
-        className="fixed inset-0 bg-gradient-to-br from-stone-900/20 via-amber-900/20 to-orange-900/20 backdrop-blur-lg flex items-center justify-center p-4 z-50"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-      >
-        <motion.div 
-          className="bg-gradient-to-br from-stone-50 to-amber-50/90 backdrop-blur-xl rounded-3xl p-6 sm:p-8 w-full max-w-sm mx-4 shadow-2xl border-2 border-amber-200/60 relative overflow-hidden"
-          initial={{ scale: 0.8, rotate: -5, opacity: 0 }}
-          animate={{ scale: 1, rotate: 0, opacity: 1 }}
-          exit={{ scale: 0.8, rotate: 5, opacity: 0 }}
-          transition={{ type: "spring", stiffness: 300, damping: 25 }}
-        >
-          <div className="relative text-center">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 shadow-2xl">
-              <Brain className="w-8 h-8 sm:w-10 sm:h-10 text-white animate-pulse" />
-            </div>
-            
-            <h3 className="text-xl sm:text-2xl font-black bg-gradient-to-r from-amber-700 via-orange-700 to-red-700 bg-clip-text text-transparent mb-3">
-              🤖 AI Magic in Progress
-            </h3>
-            
-            <div className="bg-gradient-to-r from-amber-50/80 via-orange-50/80 to-red-50/80 rounded-xl p-4 mb-4 border border-amber-200/60 backdrop-blur-sm">
-              <p className="text-stone-700 font-bold text-sm sm:text-base mb-2">
-                ✨ Did you know?
-              </p>
-              <p className="text-stone-600 text-xs sm:text-sm leading-relaxed">
-                Each player gets <span className="font-bold text-amber-700">unique questions</span> generated by AI! 
-                No two quests are ever the same! 🎯
-              </p>
-            </div>
-            
-            <p className="text-stone-600 mb-2 text-sm sm:text-base">
-              🎮 Crafting your personalized quest about
-            </p>
-            
-            <p className="font-black text-stone-800 mb-4 sm:mb-6 text-sm sm:text-base">
-              {topic?.title} ⚡
-            </p>
-            
-            <div className="flex justify-center space-x-3 mb-4">
-              {[0, 1, 2].map((i) => (
-                <div
-                  key={i}
-                  className={`w-3 h-3 rounded-full animate-bounce ${
-                    i === 0 ? 'bg-amber-400' : i === 1 ? 'bg-orange-400' : 'bg-red-400'
-                  }`}
-                  style={{ animationDelay: `${i * 0.2}s` }}
-                />
-              ))}
-            </div>
-            
-            <p className="text-xs sm:text-sm text-stone-500 animate-pulse">
-              🚀 AI is brewing your unique challenge...
-            </p>
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
-  );
-};
-
-// Simplified Transaction Modal
-const TransactionModal = ({ isVisible, status, txHash, onClose }: TransactionModalProps) => {
-  if (!isVisible) return null;
-  
-  return (
-    <AnimatePresence>
-      <motion.div 
-        className="fixed inset-0 bg-gradient-to-br from-stone-900/20 via-emerald-900/20 to-teal-900/20 backdrop-blur-lg flex items-center justify-center p-4 z-50"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-      >
-        <motion.div 
-          className="bg-gradient-to-br from-stone-50 to-emerald-50/90 backdrop-blur-xl rounded-3xl p-6 sm:p-8 w-full max-w-sm mx-4 shadow-2xl border-2 border-emerald-200/60 relative overflow-hidden"
-          initial={{ scale: 0.8, y: 50, opacity: 0 }}
-          animate={{ scale: 1, y: 0, opacity: 1 }}
-          exit={{ scale: 0.8, y: -50, opacity: 0 }}
-          transition={{ type: "spring", stiffness: 300, damping: 25 }}
-        >
-          <div className="relative text-center">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-emerald-400 via-teal-500 to-green-500 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 shadow-2xl">
-              {status === 'pending' ? (
-                <LoadingSpinner size={8} color="text-white" />
-              ) : status === 'success' ? (
-                <CheckCircle className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
-              ) : (
-                <AlertCircle className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
-              )}
-            </div>
-            
-            <h3 className="text-xl sm:text-2xl font-black text-stone-800 mb-3">
-              {status === 'pending' ? '⚡ Processing Magic' : 
-               status === 'success' ? '🎉 Success!' : 
-               '❌ Oops!'}
-            </h3>
-            
-            {status === 'pending' && (
-              <p className="text-stone-600 mb-4 sm:mb-6 text-sm sm:text-base animate-pulse">
-                🌟 Your transaction is being processed on the blockchain...
-              </p>
-            )}
-
-            {status === 'success' && (
-              <p className="text-stone-600 mb-4 sm:mb-6 text-sm sm:text-base">
-                🚀 Your quiz quest has begun! Ready to earn some CELO? 
-              </p>
-            )}
-
-            {txHash && (
-              <div className="bg-gradient-to-r from-teal-50/80 to-emerald-50/80 rounded-xl p-3 mb-4 sm:mb-6 border border-teal-200/60 backdrop-blur-sm">
-                <p className="text-xs text-stone-500 mb-1">🔗 Transaction Hash</p>
-                <p className="font-mono text-xs text-stone-700 break-all">{txHash}</p>
-              </div>
-            )}
-
-            {status !== 'pending' && (
-              <button
-                onClick={onClose}
-                className="w-full bg-gradient-to-r from-emerald-500 via-teal-500 to-green-500 text-white py-3 rounded-xl font-medium hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-3 relative overflow-hidden"
-              >
-                <CheckCircle className="w-6 h-6" />
-                <span>✨ Continue to Quiz</span>
-              </button>
-            )}
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
-  );
-};
-
-// Simplified Network Check Modal
-const NetworkCheckModal = ({ 
-  showNetworkModal,
-  isSwitchingNetwork, 
-  networkError, 
-  switchToCelo,
-  setShowNetworkModal 
-}: NetworkCheckModalProps) => {
-  if (!showNetworkModal) return null;
-  
-  return (
-    <AnimatePresence>
-      <motion.div 
-        className="fixed inset-0 bg-gradient-to-br from-stone-900/20 via-orange-900/20 to-red-900/20 backdrop-blur-lg flex items-center justify-center p-4 z-50"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-      >
-        <motion.div 
-          className="bg-gradient-to-br from-stone-50 to-orange-50/90 backdrop-blur-xl rounded-3xl p-6 sm:p-8 w-full max-w-sm mx-4 shadow-2xl border-2 border-orange-200/60 relative overflow-hidden"
-          initial={{ scale: 0.8, rotate: -3, opacity: 0 }}
-          animate={{ scale: 1, rotate: 0, opacity: 1 }}
-          exit={{ scale: 0.8, rotate: 3, opacity: 0 }}
-          transition={{ type: "spring", stiffness: 300, damping: 25 }}
-        >
-          <div className="relative text-center">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-orange-400 via-red-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 shadow-2xl">
-              {isSwitchingNetwork ? (
-                <LoadingSpinner size={8} color="text-white" />
-              ) : (
-                <AlertCircle className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
-              )}
-            </div>
-            
-            <h3 className="text-xl sm:text-2xl font-black bg-gradient-to-r from-orange-700 via-red-700 to-pink-700 bg-clip-text text-transparent mb-3">
-              {isSwitchingNetwork ? '⚡ Switching Networks' : '🔄 Wrong Network'}
-            </h3>
-            
-            <p className="text-stone-600 text-sm sm:text-base mb-6">
-              {isSwitchingNetwork 
-                ? '🌟 Switching to Celo network...' 
-                : '🎮 Quizelo runs on the Celo network! Please switch to continue your adventure.'
-              }
-            </p>
-            
-            <div className="bg-gradient-to-r from-orange-50/80 to-red-50/80 rounded-xl p-4 mb-6 border border-orange-200/60 backdrop-blur-sm">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-stone-500 font-bold">Current Network</span>
-                <span className="text-xs text-red-600 font-black">❌ Wrong</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-stone-500 font-bold">Required Network</span>
-                <span className="text-xs text-emerald-600 font-black">✅ Celo</span>
-              </div>
-            </div>
-            
-            {networkError && (
-              <div className="bg-gradient-to-r from-red-100/80 to-pink-100/80 border border-red-200/60 rounded-xl p-3 mb-4 backdrop-blur-sm">
-                <p className="text-red-700 text-xs font-bold">⚠️ {networkError}</p>
-              </div>
-            )}
-            
-            <div className="space-y-3">
-              <button
-                onClick={switchToCelo}
-                disabled={isSwitchingNetwork}
-                className="w-full bg-gradient-to-r from-orange-500 via-red-500 to-pink-500 text-white py-3 sm:py-4 rounded-2xl font-bold hover:shadow-2xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-3 relative overflow-hidden"
-              >
-                <div className="relative flex items-center space-x-3">
-                  {isSwitchingNetwork ? (
-                    <LoadingSpinner size={6} color="text-white" />
-                  ) : (
-                    <RefreshCw className="w-5 h-5" />
-                  )}
-                  <span>
-                    {isSwitchingNetwork ? '🔄 Switching...' : '🚀 Switch to Celo'}
-                  </span>
-                </div>
-              </button>
-              
-              {!isSwitchingNetwork && (
-                <button
-                  onClick={() => setShowNetworkModal(false)}
-                  className="w-full text-stone-500 py-2 text-sm hover:text-stone-600 transition-colors"
-                >
-                  ⏰ Maybe later
-                </button>
-              )}
-            </div>
-            
-            <div className="mt-4 p-3 bg-blue-50/80 rounded-xl border border-blue-200/60 backdrop-blur-sm">
-              <p className="text-xs text-blue-700 font-bold">
-                💡 Tip: You can also manually switch networks in your wallet settings
-              </p>
-            </div>
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
-  );
-};
-
 const QuizeloApp = () => {
+  // State Management
   const [activeTab, setActiveTab] = useState('home');
   const [showConnectWallet, setShowConnectWallet] = useState(false);
   const [showTopicModal, setShowTopicModal] = useState(false);
@@ -554,6 +66,7 @@ const QuizeloApp = () => {
   const [showTransactionModal, setShowTransactionModal] = useState(false);
   const [transactionStatus, setTransactionStatus] = useState<'pending' | 'success' | 'error'>('pending');
   const [currentTxHash, setCurrentTxHash] = useState('');
+  const [transactionErrorMessage, setTransactionErrorMessage] = useState('');
   const [timeLeft, setTimeLeft] = useState(15);
   const [quizSessionId, setQuizSessionId] = useState<string | null>(null);
   const [finalScore, setFinalScore] = useState<ScoreResult | null>(null);
@@ -565,47 +78,102 @@ const QuizeloApp = () => {
   const [isAnswered, setIsAnswered] = useState(false);
   const [showQuizInfo, setShowQuizInfo] = useState(false);
   const [isTimeUp, setIsTimeUp] = useState(false);
-  const [context, setContext] = useState<{
-    client?: {
-      clientFid?: number;
-      safeAreaInsets?: {
-        top?: number;
-        bottom?: number;
-        left?: number;
-        right?: number;
-      };
-    };
-    user?: {
-      fid?: number;
-    };
-  }>();
-  const [isSDKLoaded, setIsSDKLoaded] = useState(false);
-  const [isMiniApp, setIsMiniApp] = useState(false);
   const [showFeeCurrencyModal, setShowFeeCurrencyModal] = useState(false);
-  const [isMiniPayWallet, setIsMiniPayWallet] = useState(false);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [checkingActiveSession, setCheckingActiveSession] = useState(false);
+  const [dismissedResumeSession, setDismissedResumeSession] = useState<string | null>(null);
 
-  // Your hooks
+  // Hooks
   const quizelo = useQuizelo();
   const { topics, selectedTopic, selectTopic } = useTopics();
   const { generateQuestions, loading: aiLoading, error: aiError, questions, markAnswer, calculateScore } = useAI();
   const { } = useLeaderboard();
   const { switchChain } = useSwitchChain();
   const chainId = useChainId();
+  const { addError, setContractStatus, setAccountStatus } = useAppContext();
   const { address, isConnected } = useAccount();
-  const { connect, connectors } = useConnect();
+  
+  // SDK and Auto-connect
+  const { context, isSDKLoaded, isMiniApp, isInFarcaster } = useSDK();
+  const { isMiniPayWallet } = useAutoConnect({
+    isSDKLoaded,
+    isMiniApp,
+    isInFarcaster,
+    isConnected,
+    context,
+  });
 
-  // Detect if we're in Farcaster
-  const isInFarcaster = context?.client?.clientFid !== undefined;
+  // Refs for preventing duplicate modals
+  const hasShownConnectModal = useRef(false);
+  const hasShownFeeCurrencyModal = useRef(false);
 
-  // Detect MiniPay wallet
+  // Update account status in context
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setIsMiniPayWallet(isMiniPay());
+    setAccountStatus({
+      isConnected,
+      address: address || null,
+      chainId: chainId || null,
+      userInfo: quizelo.userInfo ? {
+        dailyCount: quizelo.userInfo.dailyCount,
+        lastQuiz: quizelo.userInfo.lastQuizTime,
+        nextQuizTime: quizelo.userInfo.nextQuizTime,
+        wonToday: quizelo.userInfo.wonToday,
+        canQuiz: quizelo.userInfo.canQuiz,
+      } : null,
+      userStats: quizelo.userStats ? {
+        totalQuizzes: quizelo.userStats.totalQuizzes,
+        totalEarnings: quizelo.userStats.totalEarnings,
+        bestScore: quizelo.userStats.bestScore,
+        averageScore: quizelo.userStats.averageScore,
+        currentStreak: quizelo.userStats.currentStreak,
+        longestStreak: quizelo.userStats.longestStreak,
+        totalWins: quizelo.userStats.totalWins,
+        lastActivity: quizelo.userStats.lastActivity,
+      } : null,
+      isLoading: quizelo.isLoading,
+      error: networkError || null,
+    });
+  }, [isConnected, address, chainId, networkError, quizelo.userInfo, quizelo.userStats, quizelo.isLoading, setAccountStatus]);
+  
+  // Update contract status in context
+  useEffect(() => {
+    if (quizelo.contractStats) {
+      setContractStatus({
+        isOperational: quizelo.contractStats.operational,
+        balance: quizelo.contractStats.balance,
+        minBalance: quizelo.contractStats.minBalance,
+        activeQuizCount: quizelo.contractStats.activeQuizCount,
+        totalQuizzes: quizelo.contractStats.totalQuizzes,
+        totalRewards: quizelo.contractStats.totalRewards,
+        totalFees: quizelo.contractStats.totalFees,
+        isLoading: quizelo.isLoading,
+        error: quizelo.error || null,
+      });
     }
-  }, []);
+  }, [quizelo.contractStats, quizelo.isLoading, quizelo.error, setContractStatus]);
+  
+  // Show errors in context
+  useEffect(() => {
+    if (quizelo.error) {
+      addError(quizelo.error, 'error');
+    }
+  }, [quizelo.error, addError]);
+  
+  useEffect(() => {
+    if (aiError) {
+      addError(aiError, 'warning');
+    }
+  }, [aiError, addError]);
+  
+  useEffect(() => {
+    if (networkError) {
+      addError(networkError, 'error');
+    }
+  }, [networkError, addError]);
 
+  // Handle answer selection
   const handleAnswer = useCallback((answerIndex: number) => {
-    if (isAnswered || isTimeUp) return; // Prevent multiple answers
+    if (isAnswered || isTimeUp) return;
     
     setIsAnswered(true);
     
@@ -628,7 +196,7 @@ const QuizeloApp = () => {
     setShowQuestionResult(true);
   }, [isAnswered, isTimeUp, userAnswers, currentQuestionIndex, questions, markAnswer]);
 
-  // Timer effect for quiz questions - improved reactivity
+  // Timer effect for quiz questions
   useEffect(() => {
     let timer: NodeJS.Timeout | undefined;
     
@@ -664,14 +232,11 @@ const QuizeloApp = () => {
   useEffect(() => {
     if (isMiniApp && !isConnected) {
       setShowConnectWallet(false);
-      connect({ connector: farcasterFrame() });
     } else if (address && !quizelo.isConnected) {
       // Wallet is connected but quizelo hook hasn't detected it yet
     } else if (!address && !quizelo.isConnected && !isMiniApp) {
-      // No wallet connected and not in mini app, show connect modal
       setShowConnectWallet(true);
     } else if (address && quizelo.isConnected) {
-      // Wallet is connected and quizelo hook has detected it
       setShowConnectWallet(false);
       
       // In Farcaster, manually trigger data loading after connection
@@ -683,10 +248,9 @@ const QuizeloApp = () => {
         }, 1000);
       }
     } else if (!address && quizelo.isConnected) {
-      // Wallet was disconnected
       setShowConnectWallet(true);
     }
-  }, [address, quizelo.isConnected, isMiniApp, isConnected, connect, isInFarcaster, quizelo]);
+  }, [address, quizelo.isConnected, isMiniApp, isConnected, isInFarcaster, quizelo]);
 
   const switchToCelo = useCallback(async () => {
     try {
@@ -716,6 +280,11 @@ const QuizeloApp = () => {
     selectTopic(topic);
     setShowTopicModal(false);
     
+    // Clear any active session when starting new quiz
+    setActiveSessionId(null);
+    setDismissedResumeSession(null);
+    sessionStorage.removeItem('quizelo_active_session');
+    
     if (!isConnected) {
       setShowConnectWallet(true);
       return;
@@ -732,10 +301,10 @@ const QuizeloApp = () => {
     setShowQuizInfo(true);
   }, [selectTopic, isConnected, chainId, switchToCelo]);
 
-  const startQuizFlow = useCallback(async (topic = selectedTopic) => {
+  const startQuizFlow = useCallback(async (topic = selectedTopic, token?: string, betAmount?: bigint) => {
     if (!topic) {
       console.error('No topic provided to startQuizFlow');
-      setShowTopicModal(true);
+      setTimeout(() => setShowTopicModal(true), 0);
       return;
     }
     
@@ -746,55 +315,113 @@ const QuizeloApp = () => {
       return;
     }
 
+    if (!token || !betAmount) {
+      console.error('Token and bet amount required');
+      return;
+    }
+
     try {
+      // Clear previous error
+      setTransactionErrorMessage('');
+      
+      // Show transaction modal immediately
       setShowTransactionModal(true);
       setTransactionStatus('pending');
+      setCurrentTxHash('');
       
-      // Use selected token or first supported token
-      const tokenToUse = quizelo.selectedToken || (quizelo.supportedTokens.length > 0 ? quizelo.supportedTokens[0] : null);
-      const result = await quizelo.startQuiz(tokenToUse || undefined);
-      setCurrentTxHash(quizelo.txHash || '');
+      // Start the quiz flow with callbacks for approval steps
+      let approvalHash: string | null = null;
+      const result = await quizelo.startQuiz(
+        token, 
+        betAmount,
+        // onApprovalNeeded callback
+        () => {
+          setTransactionStatus('pending');
+          setCurrentTxHash('');
+          setTransactionErrorMessage('');
+        },
+        // onApprovalComplete callback - approval hash will be set by startQuiz
+        (hash?: string) => {
+          if (hash) {
+            approvalHash = hash;
+            setCurrentTxHash(hash);
+          }
+          setTransactionStatus('pending');
+          setTransactionErrorMessage('');
+        }
+      );
+      
+      // Update transaction hash if available (from startQuiz transaction)
+      if (quizelo.txHash) {
+        setCurrentTxHash(quizelo.txHash);
+      } else if (approvalHash) {
+        // If we only have approval hash, keep showing it
+        setCurrentTxHash(approvalHash);
+      }
       
       if (result.success) {
         setQuizSessionId(result.sessionId);
         setTransactionStatus('success');
+        setTransactionErrorMessage('');
         
+        // Clear any previous active session and dismissed resume
+        setActiveSessionId(null);
+        setDismissedResumeSession(null);
+        
+        // Store session in sessionStorage to track active session
+        if (result.sessionId) {
+          sessionStorage.setItem('quizelo_active_session', result.sessionId);
+        }
+        
+        // Wait a bit for user to see success, then proceed
         setTimeout(() => {
           setShowTransactionModal(false);
           setShowQuizGeneration(true);
           
-          const apiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY || '';
-          generateQuestions(topic, apiKey).then(() => {
+          // Generate questions after transaction is confirmed
+          generateQuestions(topic).then(() => {
             setShowQuizGeneration(false);
-            setIsInQuiz(true);
+            // IMPORTANT: Set quiz state BEFORE setting isInQuiz to ensure quiz interface shows
             setShowResults(false);
             setCurrentQuestionIndex(0);
             setUserAnswers([]);
             setTimeLeft(15);
             setIsAnswered(false);
             setIsTimeUp(false);
+            // Set isInQuiz last to trigger quiz interface render
+            setIsInQuiz(true);
+          }).catch((error) => {
+            console.error('Error generating questions:', error);
+            setShowQuizGeneration(false);
+            // Clear session storage if questions failed to generate
+            sessionStorage.removeItem('quizelo_active_session');
+            // Show error but don't block the flow
           });
-        }, 1000);
+        }, 1500);
       } else {
+        // Get error message from quizelo hook
+        const errorMsg = quizelo.error || 'Failed to start quiz. Please try again.';
+        setTransactionErrorMessage(errorMsg);
         setTransactionStatus('error');
       }
     } catch (error) {
       console.error('Error starting quiz:', error);
+      const errorMsg = error instanceof Error ? error.message : 'An unexpected error occurred';
+      setTransactionErrorMessage(errorMsg);
       setTransactionStatus('error');
     }
   }, [selectedTopic, chainId, switchToCelo, quizelo, generateQuestions]);
 
-  const handleStartQuiz = useCallback(async () => {
+  const handleStartQuiz = useCallback(async (token: string, betAmount: bigint) => {
     setShowQuizInfo(false);
     
-    // Explicitly pass selectedTopic to avoid undefined issues
     if (!selectedTopic) {
       console.error('No topic selected when trying to start quiz');
-      setShowTopicModal(true);
+      setTimeout(() => setShowTopicModal(true), 0);
       return;
     }
     
-    await startQuizFlow(selectedTopic);
+    await startQuizFlow(selectedTopic, token, betAmount);
   }, [selectedTopic, startQuizFlow]);
 
   const handleContinueToNext = useCallback(() => {
@@ -826,7 +453,6 @@ const QuizeloApp = () => {
       setFinalScore(null);
     } catch (error) {
       console.error(error);
-      // Handle error silently or show user-friendly message
     }
   }, [quizSessionId, finalScore, quizelo]);
 
@@ -837,902 +463,257 @@ const QuizeloApp = () => {
     setShowTopicModal(true);
   }, []);
 
-  // Simplified Results Page
-  const ResultsPage = () => {
-    if (!finalScore) return null;
+  // Handle wallet connection state and fee currency selection
+  useEffect(() => {
+    if (!isSDKLoaded) {
+      setShowConnectWallet(false);
+      return;
+    }
 
-    const getScoreEmoji = (percentage: number) => {
-      if (percentage >= 90) return '👑';
-      if (percentage >= 80) return '🏆';
-      if (percentage >= 70) return '🥇';
-      if (percentage >= 60) return '🎯';
-      return '💪';
-    };
+    if (isMiniApp && isInFarcaster) {
+      setShowConnectWallet(false);
+      hasShownConnectModal.current = false;
+      return;
+    }
 
+    if (isConnected) {
+      setShowConnectWallet(false);
+      hasShownConnectModal.current = false;
+      return;
+    }
 
-    const getScoreMessage = (percentage: number) => {
-      if (percentage >= 90) return 'LEGENDARY! 🌟';
-      if (percentage >= 80) return 'AMAZING! 🎯';
-      if (percentage >= 70) return 'GREAT JOB! 🚀';
-      if (percentage >= 60) return 'WELL DONE! 💫';
-      return 'KEEP GOING! 💪';
-    };
+    if (!isConnected && !hasShownConnectModal.current) {
+      const timer = setTimeout(() => {
+        if (!isConnected) {
+          setShowConnectWallet(true);
+          hasShownConnectModal.current = true;
+        }
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [isConnected, isMiniApp, isInFarcaster, isSDKLoaded]);
 
-    const getScoreBgColor = (percentage: number) => {
-      if (percentage >= 80) return '#7C65C1';
-      if (percentage >= 60) return '#10b981';
-      return '#6b7280';
-    };
+  // Separate effect for fee currency modal
+  useEffect(() => {
+    if (
+      isConnected && 
+      isSDKLoaded && 
+      !quizelo.selectedToken && 
+      quizelo.supportedTokens.length > 0 && 
+      !showFeeCurrencyModal &&
+      !hasShownFeeCurrencyModal.current
+    ) {
+      const timer = setTimeout(() => {
+        setShowFeeCurrencyModal(true);
+        hasShownFeeCurrencyModal.current = true;
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [isConnected, isSDKLoaded, quizelo.selectedToken, quizelo.supportedTokens.length, showFeeCurrencyModal]);
 
-    return (
-      <div className="fixed inset-0 bg-[#f7f7f7] overflow-y-auto">
-        <div className="min-h-screen p-4 sm:p-6">
-          <div className="max-w-lg mx-auto space-y-4">
-            {/* Celebration Header - Retro Theme */}
-            <div className="retro-card-group relative">
-              <div className="retro-pattern-overlay" />
-              <div className="retro-card bg-white p-6 sm:p-8 text-center relative z-[2]">
-                <div className={`w-20 h-20 sm:w-24 sm:h-24 rounded-[0.4em] border-[0.2em] border-[#050505] shadow-[0.3em_0.3em_0_#000000] flex items-center justify-center mx-auto mb-4 sm:mb-6`} style={{ backgroundColor: getScoreBgColor(finalScore.percentage) }}>
-                  <span className="text-3xl sm:text-4xl">{getScoreEmoji(finalScore.percentage)}</span>
-                </div>
-                
-                <h1 className="text-2xl sm:text-3xl font-black text-[#050505] mb-2">
-                  🎊 Quest Complete!
-                </h1>
-                
-                <p className="text-[#6b7280] text-sm sm:text-base font-semibold">
-                  🎉 Check out your epic results!
-                </p>
-              </div>
-            </div>
-
-            {/* Score Card - Retro Theme */}
-            <div className="retro-card-group relative">
-              <div className="retro-pattern-overlay" />
-              <div className="retro-card bg-white p-6 sm:p-8 relative z-[2]">
-                <div className="text-center">
-                  <div className={`text-5xl sm:text-7xl font-black mb-3`} style={{ color: getScoreBgColor(finalScore.percentage) }}>
-                    {finalScore.percentage}%
-                  </div>
-                  
-                  <p className="text-xl sm:text-2xl font-black text-[#050505] mb-2">
-                    {getScoreMessage(finalScore.percentage)}
-                  </p>
-                  
-                  <div className="flex items-center justify-center space-x-2 text-[#6b7280]">
-                    <Trophy className="w-4 h-4 text-[#050505]" />
-                    <span className="text-sm sm:text-base font-semibold">
-                      🎯 {finalScore.correct} out of {finalScore.total} correct
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Topic Badge - Retro Theme */}
-            <div className="retro-card-group relative">
-              <div className="retro-pattern-overlay" />
-              <div className="retro-card bg-white p-4 sm:p-6 relative z-[2]">
-                <div className="flex items-center space-x-3 sm:space-x-4">
-                  <div className="text-3xl sm:text-4xl bg-[#7C65C1] w-14 h-14 sm:w-16 sm:h-16 rounded-[0.4em] border-[0.2em] border-[#050505] shadow-[0.3em_0.3em_0_#000000] flex items-center justify-center">
-                    {selectedTopic?.icon}
-                  </div>
-                  <div>
-                    <h3 className="font-black text-[#050505] text-base sm:text-lg">✨ {selectedTopic?.title}</h3>
-                    <p className="text-[#6b7280] text-sm sm:text-base font-semibold">{selectedTopic?.description}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons - Retro Theme */}
-            <div className="space-y-4">
-              {finalScore?.percentage >= 60 && (
-                <button
-                  onClick={handleClaimReward}
-                  disabled={quizelo.isLoading}
-                  className="w-full bg-[#10b981] hover:bg-[#059669] text-white py-4 rounded-[0.4em] font-bold text-lg border-[0.2em] border-[#050505] shadow-[0.3em_0.3em_0_#000000] hover:shadow-[0.4em_0.4em_0_#000000] hover:-translate-x-[0.1em] hover:-translate-y-[0.1em] active:translate-x-[0.1em] active:translate-y-[0.1em] active:shadow-[0.15em_0.15em_0_#000000] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-[0.3em_0.3em_0_#000000] flex items-center justify-center space-x-3 uppercase tracking-[0.05em]"
-                >
-                  {quizelo.isLoading ? (
-                    <LoadingSpinner size={6} color="text-white" />
-                  ) : (
-                    <>
-                      <Coins className="w-6 h-6 text-white" />
-                      <span className="text-white">🎁 Claim Your Reward!</span>
-                    </>
-                  )}
-                </button>
-              )}
-              
-              <button
-                onClick={handleRetakeQuiz}
-                className="w-full bg-[#7C65C1] hover:bg-[#6952A3] text-white py-4 rounded-[0.4em] font-bold border-[0.2em] border-[#050505] shadow-[0.3em_0.3em_0_#000000] hover:shadow-[0.4em_0.4em_0_#000000] hover:-translate-x-[0.1em] hover:-translate-y-[0.1em] active:translate-x-[0.1em] active:translate-y-[0.1em] active:shadow-[0.15em_0.15em_0_#000000] transition-all flex items-center justify-center space-x-3 uppercase tracking-[0.05em]"
-              >
-                <RefreshCw className="w-5 h-5 text-white" />
-                <span className="text-white">🚀 Take Another Quest</span>
-              </button>
-              
-              <button
-                onClick={() => {
-                  setShowResults(false);
-                  setQuizSessionId(null);
-                  setFinalScore(null);
-                }}
-                className="w-full bg-white hover:bg-[#f7f7f7] text-[#050505] py-4 rounded-[0.4em] font-semibold border-[0.2em] border-[#050505] shadow-[0.2em_0.2em_0_#000000] hover:shadow-[0.3em_0.3em_0_#000000] hover:-translate-x-[0.1em] hover:-translate-y-[0.1em] transition-all"
-              >
-                🏠 Back to Home Base
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // Simplified Quiz Interface (MAIN FIX - REMOVED EXCESSIVE ANIMATIONS)
-  const QuizInterface = () => {
-    if (!questions[currentQuestionIndex]) return null;
-
-    const question = questions[currentQuestionIndex];
-
-    return (
-      <div className="fixed inset-0 bg-[#f7f7f7] overflow-y-auto">
-        <div className="min-h-screen p-mobile">
-          <div className="max-w-sm mx-auto">
-            {/* Game Header - Retro Theme */}
-            <div className="retro-card-group relative mb-4 sm:mb-6">
-              <div className="retro-pattern-overlay" />
-              <div className="retro-card bg-white p-mobile relative z-[2]">
-                <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-[#7C65C1] rounded-[0.3em] border-[0.15em] border-[#050505] shadow-[0.2em_0.2em_0_#000000] flex items-center justify-center">
-                    <Brain className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="font-black text-[#050505] text-mobile-sm">🎯 {selectedTopic?.title}</h1>
-                    <p className="text-mobile-xs text-[#6b7280] font-semibold">
-                      🎮 Question {currentQuestionIndex + 1} of {questions.length}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Timer - Mobile optimized */}
-            <HorizontalTimer 
-              timeLeft={timeLeft} 
-              totalTime={15} 
-            />
-
-            {/* Progress - Retro Theme */}
-            <div className="mb-6">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-mobile-sm font-bold text-[#050505]">🏆 Progress</span>
-                <span className="text-mobile-sm font-bold text-[#050505]">
-                  {Math.round(((currentQuestionIndex + 1) / questions.length) * 100)}% Complete
-                </span>
-              </div>
-              <div className="w-full bg-[#e8e8e8] rounded-full h-3 overflow-hidden border-[0.1em] border-[#050505]">
-                <div 
-                  className="bg-[#7C65C1] h-full rounded-full transition-all duration-800 ease-out"
-                  style={{ width: `${((currentQuestionIndex + 1) / questions.length) * 100}%` }}
-                />
-              </div>
-            </div>
-
-            {/* Question Card - Retro Theme */}
-            <div className="retro-card-group relative mb-6">
-              <div className="retro-pattern-overlay" />
-              <div className="retro-card bg-white p-mobile relative z-[2]">
-                <div className="relative">
-                  <div className="flex items-start space-x-4 mb-6">
-                    <div className="w-8 h-8 sm:w-10 sm:h-10 bg-[#7C65C1] rounded-[0.3em] border-[0.15em] border-[#050505] shadow-[0.2em_0.2em_0_#000000] flex items-center justify-center flex-shrink-0 mt-1">
-                      <span className="text-white text-mobile-sm font-bold">{currentQuestionIndex + 1}</span>
-                    </div>
-                    <h2 className="text-mobile-base sm:text-xl font-black text-[#050505] leading-relaxed">
-                      🤔 {question.question}
-                    </h2>
-                  </div>
-                  
-                  <div className="space-y-4">
-                    {question.options.map((option, index) => (
-                      <button
-                        key={index}
-                        onClick={() => handleAnswer(index)}
-                        disabled={isAnswered}
-                        className={`w-full p-4 sm:p-5 text-left rounded-[0.4em] border-[0.2em] transition-all group relative overflow-hidden btn-mobile ${
-                          isAnswered
-                            ? index === question.correctAnswer
-                              ? 'border-[#10b981] bg-[#f0fdf4] shadow-[0.2em_0.2em_0_#10b981]'
-                              : index === userAnswers[currentQuestionIndex]
-                              ? 'border-[#ef4444] bg-[#fef2f2] shadow-[0.2em_0.2em_0_#ef4444]'
-                              : 'border-[#e8e8e8] bg-white'
-                            : 'border-[#050505] bg-white hover:border-[#7C65C1] hover:bg-[#f7f7f7] shadow-[0.2em_0.2em_0_#000000] hover:shadow-[0.3em_0.3em_0_#7C65C1] hover:-translate-x-[0.1em] hover:-translate-y-[0.1em]'
-                        }`}
-                      >
-                        <div className="relative flex items-center space-x-4">
-                          <div className={`w-8 h-8 rounded-[0.3em] border-[0.15em] flex items-center justify-center font-bold transition-all ${
-                            isAnswered
-                              ? index === question.correctAnswer
-                                ? 'border-[#10b981] bg-[#10b981] text-white'
-                                : index === userAnswers[currentQuestionIndex]
-                                ? 'border-[#ef4444] bg-[#ef4444] text-white'
-                                : 'border-[#e8e8e8] bg-[#f7f7f7] text-[#6b7280]'
-                              : 'border-[#050505] bg-white text-[#050505] group-hover:border-[#7C65C1] group-hover:bg-[#7C65C1] group-hover:text-white'
-                          }`}>
-                            <span className="text-sm font-bold">
-                              {String.fromCharCode(65 + index)}
-                            </span>
-                          </div>
-                          <span className="text-[#050505] group-hover:text-[#050505] font-semibold text-mobile-sm flex-1">
-                            {option}
-                          </span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Question Result Modal */}
-        {showQuestionResult && currentQuestionResult && (
-          <QuestionResult
-            result={currentQuestionResult}
-            correctAnswer={currentQuestionResult.correctAnswer}
-            userAnswer={currentQuestionResult.userAnswer}
-            onContinue={handleContinueToNext}
-            isLastQuestion={currentQuestionResult.isLastQuestion}
-          />
-        )}
-      </div>
-    );
-  };
-
-  const formatAddress = (addr: string) => {
-    if (!addr) return '';
-    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-  };
-  
-  // Simplified Connect Wallet Modal
-  const ConnectWalletModal = () => (
-    <AnimatePresence>
-      <motion.div 
-        className="fixed inset-0 bg-gradient-to-br from-stone-900/20 via-amber-900/20 to-orange-900/20 backdrop-blur-lg flex items-center justify-center p-4 z-50"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-      >
-        <motion.div 
-          className="bg-gradient-to-br from-stone-50 to-amber-50/90 backdrop-blur-xl rounded-3xl p-6 sm:p-8 w-full max-w-sm mx-4 shadow-2xl border-2 border-amber-200/60 relative overflow-hidden"
-          initial={{ scale: 0.8, y: 50, opacity: 0 }}
-          animate={{ scale: 1, y: 0, opacity: 1 }}
-          exit={{ scale: 0.8, y: -50, opacity: 0 }}
-          transition={{ type: "spring", stiffness: 300, damping: 25 }}
-        >
-          <div className="relative text-center">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 shadow-2xl">
-              <Wallet className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
-            </div>
-            
-            <h3 className="text-xl sm:text-2xl font-black bg-gradient-to-r from-amber-700 via-orange-700 to-red-700 bg-clip-text text-transparent mb-3">
-              🔗 Connect & Play!
-            </h3>
-            
-            <p className="text-stone-600 text-sm sm:text-base mb-6 sm:mb-8">
-              {isMiniApp && isInFarcaster 
-                ? '🎮 Connect your wallet to start your learning adventure!' 
-                : '🎮 Connect your Celo wallet to start your learning adventure and earn rewards!'
-              }
-            </p>
-            
-            {isMiniApp && isInFarcaster ? (
-              <div className="space-y-3">
-                <button
-                  onClick={() => {
-                    const farcasterConnector = connectors.find((c) => c.id === 'farcasterFrame');
-                    if (farcasterConnector) {
-                      connect({ connector: farcasterConnector });
-                    } else {
-                      connect({ connector: injected() });
-                    }
-                    setShowConnectWallet(false);
-                  }}
-                  className="w-full bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 text-white py-3 sm:py-4 rounded-2xl font-bold hover:shadow-2xl transition-all mb-3"
-                >
-                  🎯 Connect in Farcaster
-                </button>
-                
-                {connectors.length > 1 && (
-                  <button
-                    onClick={() => {
-                      connect({ connector: connectors.find((c) => c.name.includes('Coinbase')) || connectors[1] });
-                      setShowConnectWallet(false);
-                    }}
-                    className="w-full bg-blue-500 text-white py-3 rounded-2xl font-bold hover:shadow-xl transition-all"
-                  >
-                    🔵 Coinbase Wallet
-                  </button>
-                )}
-                
-                {connectors.length > 2 && (
-                  <button
-                    onClick={() => {
-                      connect({ connector: connectors.find((c) => c.name.includes('MetaMask')) || connectors[2] });
-                      setShowConnectWallet(false);
-                    }}
-                    className="w-full bg-orange-500 text-white py-3 rounded-2xl font-bold hover:shadow-xl transition-all"
-                  >
-                    🦊 MetaMask
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div>
-                <button
-                  onClick={() => {
-                    connect({ connector: injected() });
-                    setShowConnectWallet(false);
-                  }}
-                  className="w-full bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 text-white py-3 sm:py-4 rounded-2xl font-bold hover:shadow-2xl transition-all mb-4"
-                >
-                  🚀 Connect Wallet
-                </button>
-              </div>
-            )}
-            
-            <button
-              onClick={() => setShowConnectWallet(false)}
-              className="w-full text-stone-500 py-2 text-sm hover:text-stone-600 transition-colors"
-            >
-              ⏰ Maybe later
-            </button>
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
-  );
-  
-  // Simplified Topic Selection Modal
-  const TopicModal = () => (
-    <AnimatePresence>
-      <motion.div 
-        className="fixed inset-0 bg-gradient-to-br from-stone-900/20 via-amber-900/20 to-orange-900/20 backdrop-blur-lg flex items-end sm:items-center justify-center z-[9999] p-4"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        style={{
-          zIndex: 9999,
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0
-        }}
-      >
-        <motion.div 
-          className="bg-stone-50/90 backdrop-blur-xl rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[80vh] overflow-y-auto border-2 border-amber-200/60 shadow-2xl scrollbar-thin scrollbar-thumb-amber-300/50 scrollbar-track-amber-100/30"
-          initial={{ y: "100%", opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: "100%", opacity: 0 }}
-          transition={{ type: "spring", stiffness: 300, damping: 30 }}
-          style={{
-            position: 'relative',
-            zIndex: 10000
-          }}
-        >
-          <div className="sticky top-0 bg-stone-50/95 backdrop-blur-sm border-b border-amber-200/60 p-4 sm:p-6 flex items-center justify-between">
-            <h3 className="text-xl sm:text-2xl font-black bg-gradient-to-r from-amber-700 via-orange-700 to-red-700 bg-clip-text text-transparent">
-              🎯 Choose Your Quest
-            </h3>
-            <button 
-              onClick={() => setShowTopicModal(false)}
-              className="p-2 rounded-full hover:bg-amber-100/80 transition-colors"
-            >
-              <X className="w-5 h-5 sm:w-6 sm:h-6 text-stone-400" />
-            </button>
-          </div>
+  // Initialize app when SDK is loaded
+  useEffect(() => {
+    if (!isSDKLoaded) return;
+    
+    const initializeApp = async () => {
+      try {
+        const promises = [];
+        
+        if (quizelo.refetchContractStats) {
+          promises.push(
+            quizelo.refetchContractStats().catch(() => null)
+          );
+        }
+        
+        if (isConnected && address) {
+          if (quizelo.refetchUserInfo) {
+            promises.push(
+              quizelo.refetchUserInfo().catch(() => null)
+            );
+          }
           
-          <div className="p-4 sm:p-6 space-y-4">
-            {topics.map((topic) => (
-              <button
-                key={topic.id}
-                onClick={() => handleTopicSelect(topic)}
-                className="w-full p-4 sm:p-6 bg-stone-50/60 backdrop-blur-sm rounded-2xl border-2 border-stone-200/50 hover:border-amber-300/60 hover:bg-gradient-to-r hover:from-amber-50/80 hover:to-orange-50/80 transition-all text-left group relative overflow-hidden shadow-lg"
-              >
-                <div className="relative flex items-center space-x-4">
-                  <div className="text-3xl sm:text-4xl bg-gradient-to-br from-amber-100/80 to-orange-100/80 group-hover:from-amber-200/80 group-hover:to-orange-200/80 w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center transition-all shadow-lg">
-                   {topic.icon}
-                 </div>
-                 <div className="flex-1">
-                   <h4 className="font-black text-stone-800 group-hover:text-amber-800 text-base sm:text-lg mb-1 transition-colors">
-                     ✨ {topic.title}
-                   </h4>
-                   <p className="text-stone-600 group-hover:text-stone-700 transition-colors text-sm sm:text-base">
-                     {topic.description}
-                   </p>
-                 </div>
-                 <ChevronRight className="w-6 h-6 text-stone-400 group-hover:text-amber-600 transition-colors" />
-               </div>
-             </button>
-           ))}
-         </div>
-       </motion.div>
-     </motion.div>
-   </AnimatePresence>
- );
+          if (quizelo.refetchActiveQuizTakers) {
+            promises.push(
+              quizelo.refetchActiveQuizTakers().catch(() => null)
+            );
+          }
+        }
+        
+        await Promise.all(promises);
+      } catch (error) {
+        console.warn('Failed to initialize app:', error);
+      }
+    };
+
+    const timeoutId = setTimeout(() => {
+      initializeApp();
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [isSDKLoaded, isConnected, address, quizelo.refetchContractStats, quizelo.refetchUserInfo, quizelo.refetchActiveQuizTakers, quizelo]);
+
+  // Additional effect to load data when connection status changes
+  useEffect(() => {
+    if (isSDKLoaded && isConnected && address) {
+      const loadUserData = async () => {
+        try {
+          await Promise.all([
+            quizelo.refetchUserInfo?.().catch(() => null),
+            quizelo.refetchActiveQuizTakers?.().catch(() => null),
+            quizelo.refetchUserStats?.().catch(() => null)
+          ]);
+        } catch (error) {
+          console.warn('Failed to load user data:', error);
+        }
+      };
+      
+      const timeoutId = setTimeout(() => {
+        loadUserData();
+      }, 500);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [isSDKLoaded, isConnected, address, quizelo.refetchUserInfo, quizelo.refetchActiveQuizTakers, quizelo.refetchUserStats, quizelo]);
+
+  // Check for active quiz session on mount and when activeQuizTakers changes
+  // Only show resume if user is in the same browser session (not after refresh/leave)
+  useEffect(() => {
+    const checkActiveSession = async () => {
+      if (!isConnected || !address || !quizelo.activeQuizTakers || quizelo.activeQuizTakers.length === 0) {
+        setActiveSessionId(null);
+        return;
+      }
+
+      // Check if user has an in-memory session (same browser session)
+      // If they refreshed or left, don't show resume option
+      const storedSessionId = sessionStorage.getItem('quizelo_active_session');
+      if (!storedSessionId) {
+        // User refreshed or left - don't show resume
+        setActiveSessionId(null);
+        return;
+      }
+
+      // Prevent concurrent checks
+      if (checkingActiveSession) return;
+      setCheckingActiveSession(true);
+
+      try {
+        // Check each active session to find one belonging to current user
+        for (const sessionId of quizelo.activeQuizTakers) {
+          // Only check the session that matches stored session
+          if (sessionId !== storedSessionId) continue;
+          
+          const session = await quizelo.getQuizSession(sessionId);
+          if (session && session.user.toLowerCase() === address.toLowerCase() && session.active && !session.claimed) {
+            const now = Math.floor(Date.now() / 1000);
+            if (session.expiryTime > now) {
+              // Found active session for this user and it matches stored session
+              // Only show if not dismissed
+              if (dismissedResumeSession !== sessionId) {
+                setActiveSessionId(sessionId);
+              }
+              setCheckingActiveSession(false);
+              return;
+            }
+          }
+        }
+        // No active session found or doesn't match stored session
+        setActiveSessionId(null);
+        sessionStorage.removeItem('quizelo_active_session');
+      } catch (error) {
+        console.warn('Failed to check active session:', error);
+        setActiveSessionId(null);
+        sessionStorage.removeItem('quizelo_active_session');
+      } finally {
+        setCheckingActiveSession(false);
+      }
+    };
+
+    // Only check if not already checking
+    if (!checkingActiveSession) {
+      checkActiveSession();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnected, address, quizelo.activeQuizTakers, quizelo.getQuizSession, dismissedResumeSession]);
+
+  // Resume quiz function
+  const handleResumeQuiz = useCallback(async () => {
+    if (!activeSessionId || !selectedTopic) return;
+
+    try {
+      setShowQuizGeneration(true);
+      
+      // Generate questions for the topic
+      await generateQuestions(selectedTopic);
+      
+      setShowQuizGeneration(false);
+      // Set quiz state
+      setQuizSessionId(activeSessionId);
+      setShowResults(false);
+      setCurrentQuestionIndex(0);
+      setUserAnswers([]);
+      setTimeLeft(15);
+      setIsAnswered(false);
+      setIsTimeUp(false);
+      // Set isInQuiz last to trigger quiz interface render
+      setIsInQuiz(true);
+    } catch (error) {
+      console.error('Error resuming quiz:', error);
+      setShowQuizGeneration(false);
+      // Clear session if resume fails
+      sessionStorage.removeItem('quizelo_active_session');
+      setActiveSessionId(null);
+    }
+  }, [activeSessionId, selectedTopic, generateQuestions]);
+
+  // Dismiss resume quiz
+  const handleDismissResume = useCallback(() => {
+    if (activeSessionId) {
+      setDismissedResumeSession(activeSessionId);
+      setActiveSessionId(null);
+      // Clear session storage so it won't show again
+      sessionStorage.removeItem('quizelo_active_session');
+    }
+  }, [activeSessionId]);
+
+  // Clear session storage when quiz is completed or user leaves quiz
+  useEffect(() => {
+    if (showResults || (!isInQuiz && quizSessionId)) {
+      // Quiz completed or user left - clear session storage
+      sessionStorage.removeItem('quizelo_active_session');
+      setActiveSessionId(null);
+    }
+  }, [showResults, isInQuiz, quizSessionId]);
+
+  // Clear session storage on page unload (user leaves/refreshes)
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      sessionStorage.removeItem('quizelo_active_session');
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []);
  
-// HomeContent is now imported from ./pages/HomeContent
-// Removed local definition - using imported component
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _HomeContentLocal = () => (
-   <div className="space-y-4 w-full p-3">
-     {/* Hero Section */}
-     <div className="bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-2xl p-4 text-white relative overflow-hidden shadow-2xl border-2 border-white/20">
-       <div className="relative">
-         <div className="flex items-center space-x-3 mb-4">
-           <div className="bg-white/20 p-2 rounded-xl backdrop-blur-sm shadow-lg">
-             <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-           </div>
-           <div>
-             <h1 className="text-mobile-xl sm:text-2xl font-black">
-               🎮 Quizelo
-             </h1>
-             <p className="text-orange-100 font-bold text-mobile-xs">
-               {isMiniApp && isInFarcaster ? '🎭 Powered by Farcaster x Celo' : '🌱 Powered by Celo Magic'}
-             </p>
-           </div>
-         </div>
-         
-         <p className="text-orange-100 mb-4 text-mobile-sm leading-relaxed font-medium">
-           🎮 Level up your Celo knowledge and earn epic CELO rewards! Join thousands of crypto warriors on the ultimate blockchain adventure! ⚔️💰
-         </p>
-         
-         {isConnected ? (
-           <div className="bg-white/20 rounded-xl p-3 backdrop-blur-sm border border-white/30 shadow-lg">
-             <div className="flex items-center justify-between">
-               <div className="flex items-center space-x-3">
-                 <Wallet className="w-4 h-4 text-orange-100" />
-                 <div>
-                   <p className="text-orange-100 text-xs font-bold">
-                     {isMiniApp && isInFarcaster 
-                       ? `🎭 Farcaster Player (FID: ${context?.user?.fid || 'N/A'})` 
-                       : '🎯 Player Connected'
-                     }
-                   </p>
-                   <p className="font-mono text-white text-xs">{formatAddress(address || '')}</p>
-                 </div>
-               </div>
-               <button
-                 onClick={switchToCelo}
-                 disabled={isSwitchingNetwork}
-                 className="flex items-center space-x-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed btn-mobile"
-               >
-                 {isSwitchingNetwork ? (
-                   <LoadingSpinner size={4} color="text-white" />
-                 ) : (
-                   <>
-                     <RefreshCw className="w-3 h-3 text-white" />
-                     <span className="text-white text-xs font-medium">
-                       {chainId === celo.id ? '✅ Celo' : '🔄 Switch to Celo'}
-                     </span>
-                   </>
-                 )}
-               </button>
-             </div>
-           </div>
-         ) : (
-           <div className="bg-white/20 rounded-xl p-3 backdrop-blur-sm border border-white/30 shadow-lg">
-             <div className="flex items-center justify-between">
-               <div className="flex items-center space-x-3">
-                 <Wallet className="w-4 h-4 text-orange-100" />
-                 <div>
-                   <p className="text-orange-100 text-xs font-bold">
-                     {isMiniApp && isInFarcaster ? '🔌 Wallet Not Connected in Farcaster' : '🔌 Wallet Not Connected'}
-                   </p>
-                   <p className="text-orange-100 text-xs">
-                     {isMiniApp && isInFarcaster ? 'Connect your wallet to play!' : 'Connect to start playing!'}
-                   </p>
-                 </div>
-               </div>
-               <button
-                 onClick={() => setShowConnectWallet(true)}
-                 className="flex items-center space-x-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg transition-all btn-mobile"
-               >
-                 <span className="text-white text-xs font-medium">🔗 Connect</span>
-               </button>
-             </div>
-           </div>
-         )}
-       </div>
-     </div>
-
-     {/* Farcaster Mini App Features */}
-     {isMiniApp && isInFarcaster && (
-       <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50">
-         <div className="flex items-center space-x-3 mb-3">
-           <div className="w-8 h-8 bg-gradient-to-br from-amber-400 to-orange-500 rounded-lg flex items-center justify-center">
-             <span className="text-white text-sm">🎭</span>
-           </div>
-           <div>
-             <h3 className="font-black text-stone-800 text-mobile-sm">🚀 Farcaster Mini App</h3>
-             <p className="text-stone-600 text-mobile-xs">Special features for Farcaster users</p>
-           </div>
-         </div>
-         
-         <div className="grid grid-cols-2 gap-2">
-           <button
-             onClick={() => setShowTopicModal(true)}
-             className="p-2 rounded-lg text-mobile-xs font-medium bg-amber-100/80 text-amber-600 hover:bg-amber-200/80 transition-all btn-mobile"
-           >
-             🎮 Start Quiz
-           </button>
-           
-           <button
-             onClick={() => {
-               const shareText = `🎮 Just played Quizelo and learned about ${selectedTopic?.title || 'Celo'}! Join me on this epic blockchain learning adventure and earn CELO rewards! 🌱💰\n\nTry it yourself: ${window.location.origin}`;
-               const encodedText = encodeURIComponent(shareText);
-               const composeUrl = `https://warpcast.com/~/compose?text=${encodedText}`;
-               sdk.actions.openUrl(composeUrl);
-             }}
-             className="p-2 rounded-lg text-mobile-xs font-medium bg-blue-100/80 text-blue-600 hover:bg-blue-200/80 transition-all btn-mobile"
-           >
-             📤 Share Quizelo
-           </button>
-           
-           <button
-             onClick={() => sdk.actions.close()}
-             className="p-2 rounded-lg text-mobile-xs font-medium bg-red-100/80 text-red-600 hover:bg-red-200/80 transition-all btn-mobile"
-           >
-             ❌ Close App
-           </button>
-         </div>
-       </div>
-     )}
-
-     {/* Game Stats */}
-     {isConnected && (
-       <div className="grid grid-cols-2 gap-3">
-         <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50 hover:shadow-2xl transition-all group">
-           <div className="flex items-center space-x-3 mb-2">
-             <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-lg flex items-center justify-center shadow-lg">
-               <Trophy className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-             </div>
-             <span className="text-mobile-xs font-bold text-stone-600">🏆 Todayz Quests</span>
-           </div>
-           <p className="text-mobile-xl sm:text-2xl font-black bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
-             {quizelo.userInfo?.dailyCount ?? 0}/{quizelo.maxDailyQuizzes ?? 3}
-           </p>
-           {isMiniApp && !quizelo.userInfo && quizelo.isLoading && (
-             <div className="mt-2 flex items-center justify-center">
-               <LoadingSpinner size={3} color="text-orange-500" />
-             </div>
-           )}
-           {isMiniApp && !quizelo.userInfo && !quizelo.isLoading && (
-             <div className="mt-2 flex items-center justify-center">
-               <button 
-                 onClick={() => quizelo.refetchUserInfo()}
-                 className="text-mobile-xs text-orange-600 hover:text-orange-700 font-medium"
-               >
-                 🔄 Retry
-               </button>
-             </div>
-           )}
-         </div>
-         
-         <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50 hover:shadow-2xl transition-all group">
-           <div className="flex items-center space-x-3 mb-2">
-             <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-teal-400 via-blue-500 to-purple-500 rounded-lg flex items-center justify-center shadow-lg">
-               <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-             </div>
-             <span className="text-mobile-xs font-bold text-stone-600">⏰ Next Quest</span>
-           </div>
-           <p className="text-mobile-lg sm:text-xl font-black bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-             {quizelo.userInfo ? (
-               quizelo.timeUntilNextQuiz > 0 
-                 ? `${Math.floor(quizelo.timeUntilNextQuiz / 60)}:${(quizelo.timeUntilNextQuiz % 60).toString().padStart(2, '0')}`
-                 : 'Ready! 🚀'
-             ) : (
-               isMiniApp && quizelo.isLoading ? (
-                 <div className="flex items-center justify-center">
-                   <LoadingSpinner size={3} color="text-blue-500" />
-                 </div>
-               ) : (
-                 'Loading...'
-               )
-             )}
-           </p>
-           {isMiniApp && !quizelo.userInfo && !quizelo.isLoading && (
-             <div className="mt-2 flex items-center justify-center">
-               <button 
-                 onClick={() => quizelo.refetchUserInfo()}
-                 className="text-mobile-xs text-blue-600 hover:text-blue-700 font-medium"
-               >
-                 🔄 Retry
-               </button>
-             </div>
-           )}
-         </div>
-       </div>
-     )}
-
-     {/* Contract Status */}
-     {quizelo.contractStats && (
-       <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50 hover:shadow-2xl transition-all">
-         <div className="flex items-center justify-between mb-3">
-           <div className="flex items-center space-x-3">
-             <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-emerald-400 via-teal-500 to-green-500 rounded-lg flex items-center justify-center shadow-lg">
-               <Coins className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-             </div>
-             <span className="font-black text-stone-800 text-mobile-sm">⚡ Game Status</span>
-           </div>
-           {quizelo.contractStats.operational ? (
-             <div className="flex items-center space-x-2 bg-emerald-100/80 px-2 py-1 rounded-full backdrop-blur-sm">
-               <CheckCircle className="w-3 h-3 text-emerald-500" />
-               <span className="text-mobile-xs font-bold text-emerald-600">🟢 Online</span>
-             </div>
-           ) : (
-             <div className="flex items-center space-x-2 bg-red-100/80 px-2 py-1 rounded-full backdrop-blur-sm">
-               <AlertCircle className="w-3 h-3 text-red-500" />
-               <span className="text-mobile-xs font-bold text-red-600">🔴 Limited</span>
-             </div>
-           )}
-         </div>
-         <div className="bg-gradient-to-r from-emerald-50/80 to-teal-50/80 rounded-lg p-3 border border-emerald-200/60 backdrop-blur-sm">
-           <p className="text-stone-600 text-mobile-xs mb-1 font-bold">💰 Reward Pool</p>
-           <p className="font-black text-stone-800 text-mobile-base sm:text-lg">
-             {quizelo.formatEther(quizelo.contractStats.balance)} CELO ✨
-           </p>
-         </div>
-       </div>
-     )}
-
-     {/* Contract Stats Loading/Error State */}
-     {isConnected && !quizelo.contractStats && (
-       <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50">
-         <div className="flex items-center justify-between mb-3">
-           <div className="flex items-center space-x-3">
-             <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-emerald-400 via-teal-500 to-green-500 rounded-lg flex items-center justify-center shadow-lg">
-               <Coins className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-             </div>
-             <span className="font-black text-stone-800 text-mobile-sm">⚡ Game Status</span>
-           </div>
-           {quizelo.isLoading ? (
-             <div className="flex items-center space-x-2 bg-blue-100/80 px-2 py-1 rounded-full backdrop-blur-sm">
-               <LoadingSpinner size={3} color="text-blue-500" />
-               <span className="text-mobile-xs font-bold text-blue-600">Loading...</span>
-             </div>
-           ) : (
-             <div className="flex items-center space-x-2 bg-orange-100/80 px-2 py-1 rounded-full backdrop-blur-sm">
-               <AlertCircle className="w-3 h-3 text-orange-500" />
-               <span className="text-mobile-xs font-bold text-orange-600">Failed</span>
-             </div>
-           )}
-         </div>
-         <div className="bg-gradient-to-r from-orange-50/80 to-amber-50/80 rounded-lg p-3 border border-orange-200/60 backdrop-blur-sm">
-           <p className="text-stone-600 text-mobile-xs mb-1 font-bold">
-             {quizelo.isLoading ? '🔄 Loading contract data...' : '❌ Failed to load contract data'}
-           </p>
-           {!quizelo.isLoading && (
-             <button 
-               onClick={() => quizelo.refetchContractStats()}
-               className="text-mobile-xs text-orange-600 hover:text-orange-700 font-medium"
-             >
-               🔄 Retry Loading
-             </button>
-           )}
-         </div>
-       </div>
-     )}
-
-     {/* Selected Topic */}
-     {selectedTopic && (
-       <div className="bg-stone-50/80 backdrop-blur-xl rounded-2xl p-4 shadow-xl border-2 border-stone-200/50 hover:shadow-2xl transition-all">
-         <div className="flex items-center space-x-4 mb-4">
-           <div className="text-3xl sm:text-4xl bg-gradient-to-br from-amber-100/80 to-orange-100/80 w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center shadow-lg">
-             {selectedTopic.icon}
-           </div>
-           <div className="flex-1">
-             <h3 className="font-black text-stone-800 text-mobile-base sm:text-lg">🎯 {selectedTopic.title}</h3>
-             <p className="text-stone-600 text-mobile-sm">{selectedTopic.description}</p>
-           </div>
-         </div>
-         <button
-           onClick={() => setShowTopicModal(true)}
-           className="text-amber-700 font-bold hover:text-amber-800 transition-colors flex items-center space-x-2 text-mobile-sm bg-amber-50/80 px-4 py-2 rounded-full hover:bg-amber-100/80 backdrop-blur-sm btn-mobile"
-         >
-           <span>🔄 Change Quest</span>
-           <ChevronRight className="w-4 h-4" />
-         </button>
-       </div>
-     )}
-
-     {/* Status Messages */}
-     {quizelo.error && (
-       <div className="bg-gradient-to-r from-red-100/80 to-orange-100/80 border-2 border-red-200/60 rounded-2xl p-4 shadow-lg backdrop-blur-sm">
-         <div className="flex items-center space-x-3">
-           <AlertCircle className="w-6 h-6 text-red-500 flex-shrink-0" />
-           <p className="text-red-700 text-sm sm:text-base font-bold">⚠️ {quizelo.error}</p>
-         </div>
-       </div>
-     )}
-
-     {quizelo.success && (
-       <div className="bg-gradient-to-r from-emerald-100/80 to-teal-100/80 border-2 border-emerald-200/60 rounded-2xl p-4 shadow-lg backdrop-blur-sm">
-         <div className="flex items-center space-x-3">
-           <CheckCircle className="w-6 h-6 text-emerald-500 flex-shrink-0" />
-           <p className="text-emerald-700 text-sm sm:text-base font-bold">✨ {quizelo.success}</p>
-         </div>
-       </div>
-     )}
-
-     {aiError && (
-       <div className="bg-gradient-to-r from-orange-100/80 to-amber-100/80 border-2 border-orange-200/60 rounded-2xl p-4 shadow-lg backdrop-blur-sm">
-         <div className="flex items-center space-x-3">
-           <Brain className="w-6 h-6 text-orange-500 flex-shrink-0" />
-           <p className="text-orange-700 text-sm sm:text-base font-bold">🤖 {aiError}</p>
-         </div>
-       </div>
-     )}
-   </div>
- );
- 
-// LeaderboardContent and ProfileContent are now imported from ./pages/
- 
- // SDK initialization with Mini App detection
- useEffect(() => {
-   const load = async () => {
-     try {
-       // Check if running in Mini App by checking the context
-       const frameContext = await sdk.context;
-       setContext(frameContext);
-       
-       const miniAppStatus = frameContext?.client?.clientFid !== undefined;
-       setIsMiniApp(miniAppStatus);
-       
-       if (miniAppStatus) {
-         // Call ready to dismiss Farcaster's loading screen
-         await sdk.actions.ready();
-       }
-       
-       setIsSDKLoaded(true);
-     } catch (error) {
-       console.error(error);
-       // Still set as loaded to avoid infinite loading
-       setIsSDKLoaded(true);
-     }
-   };
-   
-   load();
- }, []);
-
- // Auto-connect logic for Farcaster Mini App users and MiniPay
- useEffect(() => {
-   if (isSDKLoaded && isMiniApp && isInFarcaster && !isConnected) {
-     // Try to connect with Farcaster frame connector first
-     const farcasterConnector = connectors.find((c) => c.id === 'farcasterFrame');
-     if (farcasterConnector) {
-       connect({ connector: farcasterConnector });
-     } else {
-       // Fallback to injected wallet
-       connect({ connector: injected() });
-     }
-   } else if (isSDKLoaded && isMiniPayWallet && !isConnected) {
-     // Auto-connect for MiniPay
-     connect({ connector: injected() });
-   }
- }, [isSDKLoaded, isMiniApp, isInFarcaster, isConnected, connect, connectors, isMiniPayWallet]);
-
- // Handle wallet connection state and fee currency selection
- useEffect(() => {
-   if (isMiniApp && isInFarcaster) {
-     // In Farcaster Mini App, we don't show connect modal initially
-     setShowConnectWallet(false);
-   } else if (!isConnected) {
-     // Outside Farcaster or regular web, show connect modal if not connected
-     setShowConnectWallet(true);
-   } else {
-     setShowConnectWallet(false);
-   }
-
-   // Show fee currency selection modal when connected and no token is selected
-   // Only show once per session
-   if (isConnected && isSDKLoaded && !quizelo.selectedToken && quizelo.supportedTokens.length > 0 && !showFeeCurrencyModal) {
-     // Small delay to ensure UI is ready
-     const timer = setTimeout(() => {
-       setShowFeeCurrencyModal(true);
-     }, 500);
-     return () => clearTimeout(timer);
-   }
- }, [isConnected, isMiniApp, isInFarcaster, isSDKLoaded, quizelo.selectedToken, quizelo.supportedTokens, showFeeCurrencyModal]);
-
- // Network checking
- useEffect(() => {
-   if (isConnected && chainId !== celo.id) {
-     setShowNetworkModal(true);
-     switchToCelo();
-   } else if (isConnected && chainId === celo.id) {
-     setShowNetworkModal(false);
-   }
- }, [isConnected, chainId, switchToCelo]);
-
- // Initialize app when SDK is loaded - improved reactivity
- useEffect(() => {
-   const initializeApp = async () => {
-     try {
-       // Load initial data with better error handling
-       const promises = [];
-       
-       // Always load leaderboard data (this works in Farcaster and doesn't require connection)
-       promises.push(
-         // This will trigger leaderboard loading
-         Promise.resolve()
-       );
-       
-       // Load contract stats (public data, doesn't require connection)
-       promises.push(
-         quizelo.refetchContractStats().catch(() => null)
-       );
-       
-       // Only load user-specific data if connected
-       if (isConnected) {
-         promises.push(
-           quizelo.refetchUserInfo().catch(() => null)
-         );
-         
-         promises.push(
-           quizelo.refetchActiveQuizTakers().catch(() => null)
-         );
-       }
-       
-       await Promise.all(promises);
-     } catch (error) {
-       console.error(error);
-       // Handle error silently
-     }
-   };
-
-   if (isSDKLoaded) {
-     initializeApp();
-   }
- }, [isSDKLoaded, isConnected, quizelo]);
-
- // Additional effect to load data when connection status changes
- useEffect(() => {
-   if (isSDKLoaded && isConnected) {
-     // Load user-specific data when connected
-     const loadUserData = async () => {
-       try {
-         await Promise.all([
-           quizelo.refetchUserInfo().catch(() => null),
-           quizelo.refetchActiveQuizTakers().catch(() => null)
-         ]);
-       } catch (error) {
-         console.error(error);
-       }
-     };
-     
-     loadUserData();
-   }
- }, [isSDKLoaded, isConnected, quizelo]);
- 
- // Loading screen for SDK - SIMPLIFIED
- if (!isSDKLoaded) {
-   return (
-     <div className="min-h-screen bg-gradient-to-br from-stone-100 via-amber-50 to-orange-100 flex items-center justify-center">
-       <div className="text-center">
-         <LoadingSpinner size={12} color="text-amber-600" />
-         <p className="mt-4 text-amber-700 font-black text-lg">
-           🔄 Loading Quizelo...
-         </p>
-         <div className="mt-2 text-amber-600 text-sm">
-           🎮 Preparing your blockchain adventure! ⚔️
-         </div>
-       </div>
-     </div>
-   );
- }
+  // Loading screen for SDK
+  if (!isSDKLoaded) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-stone-100 via-amber-50 to-orange-100 flex items-center justify-center">
+        <div className="text-center">
+          <LoadingSpinner size={12} color="text-amber-600" />
+          <p className="mt-4 text-amber-700 font-black text-lg">
+            🔄 Loading Quizelo...
+          </p>
+          <div className="mt-2 text-amber-600 text-sm">
+            🎮 Preparing your blockchain adventure! ⚔️
+          </div>
+        </div>
+      </div>
+    );
+  }
  
   return (
     <div 
@@ -1744,160 +725,146 @@ const _HomeContentLocal = () => (
         paddingRight: context?.client?.safeAreaInsets?.right ?? 0,
       }}
     >
-     {/* Main Content - Mobile-centered layout */}
-     <div className="min-h-screen w-full mobile-container pb-32 sm:pb-40">
-       {showResults ? (
-         <ResultsPage />
-       ) : isInQuiz ? (
-         <QuizInterface />
-       ) : (
-         <div className="py-4 sm:py-6">
-           {activeTab === 'home' && (
-            <HomeContent 
-              isMiniApp={isMiniApp}
-              isInFarcaster={isInFarcaster}
-              context={context}
-              setShowConnectWallet={setShowConnectWallet}
-              setShowTopicModal={setShowTopicModal}
-              switchToCelo={switchToCelo}
-              isSwitchingNetwork={isSwitchingNetwork}
-              setShowFeeCurrencyModal={setShowFeeCurrencyModal}
-            />
-          )}
-          {activeTab === 'leaderboard' && <LeaderboardContent />}
-          {activeTab === 'profile' && (
-            <ProfileContent 
-              isMiniApp={isMiniApp}
-              isInFarcaster={isInFarcaster}
-              context={context}
-              showProfileDropdown={showProfileDropdown}
-              setShowProfileDropdown={setShowProfileDropdown}
-              setShowConnectWallet={setShowConnectWallet}
-            />
-          )}
-         </div>
-       )}
-     </div>
-
-    {/* Cool Retro-themed Start Quiz Button */}
-    {!isInQuiz && !showResults && (
-      <div className="fixed bottom-28 sm:bottom-32 right-4 sm:right-6 z-50" style={{ zIndex: 9999 }}>
-        <div className="relative">
-          {/* Glow effect */}
-          <div className="absolute inset-0 bg-gradient-to-r from-[#7C65C1] via-[#9D7FE8] to-[#7C65C1] rounded-full blur-xl opacity-60 animate-pulse" style={{ 
-            width: 'calc(100% + 1.5rem)', 
-            height: 'calc(100% + 1.5rem)',
-            top: '-0.75rem',
-            left: '-0.75rem'
-          }} />
-          
-          <button
-            onClick={() => setShowTopicModal(true)}
-            onTouchStart={(e) => {
-              e.preventDefault();
-              setShowTopicModal(true);
+      {/* Main Content */}
+      <div className="min-h-screen w-full mobile-container pb-32 sm:pb-40">
+        {showResults ? (
+          <ResultsPage
+            finalScore={finalScore!}
+            selectedTopic={selectedTopic}
+            isLoading={quizelo.isLoading}
+            onClaimReward={handleClaimReward}
+            onRetakeQuiz={handleRetakeQuiz}
+            onBackToHome={() => {
+              setShowResults(false);
+              setQuizSessionId(null);
+              setFinalScore(null);
             }}
-            disabled={quizelo.isLoading || aiLoading || (quizelo.userInfo ? !quizelo.userInfo.canQuiz : false)}
-            className="relative bg-gradient-to-br from-[#7C65C1] via-[#9D7FE8] to-[#6952A3] w-16 h-16 sm:w-20 sm:h-20 rounded-full border-[0.25em] border-[#050505] flex items-center justify-center transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed btn-mobile shadow-[0.4em_0.4em_0_#000000] hover:shadow-[0.6em_0.6em_0_#000000] hover:-translate-x-[0.2em] hover:-translate-y-[0.2em] active:translate-x-[0.1em] active:translate-y-[0.1em] active:shadow-[0.2em_0.2em_0_#000000] hover:scale-110 group overflow-hidden"
-            style={{
-              touchAction: 'manipulation',
-              pointerEvents: 'auto',
-              animation: 'playButtonPulse 2s ease-in-out infinite'
-            }}
-            title={quizelo.userInfo && !quizelo.userInfo.canQuiz ? "You've reached your daily quiz limit" : "Start a new quiz"}
-          >
-            {/* Shine effect */}
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
-            
-            {/* Inner glow */}
-            <div className="absolute inset-2 rounded-full bg-gradient-to-br from-white/20 to-transparent" />
-            
-            {/* Play icon */}
-            <div className="relative z-10 transform group-hover:scale-110 transition-transform duration-300">
-              {quizelo.isLoading || aiLoading ? (
-                <LoadingSpinner size={6} color="text-white" />
-              ) : (
-                <div className="relative">
-                  <Play className="w-7 h-7 sm:w-9 sm:h-9 text-white ml-1 drop-shadow-2xl filter brightness-110" />
-                  {/* Sparkle effect */}
-                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-300 rounded-full animate-ping opacity-75" />
-                  <div className="absolute -bottom-1 -left-1 w-1.5 h-1.5 bg-yellow-300 rounded-full animate-ping opacity-75" style={{ animationDelay: '0.5s' }} />
-                </div>
-              )}
-            </div>
-            
-            {/* Ripple effect on click */}
-            <div className="absolute inset-0 rounded-full bg-white/30 scale-0 group-active:scale-150 opacity-0 group-active:opacity-100 transition-all duration-500" />
-          </button>
-        </div>
+          />
+        ) : isInQuiz ? (
+          <QuizInterface
+            questions={questions}
+            currentQuestionIndex={currentQuestionIndex}
+            selectedTopic={selectedTopic}
+            timeLeft={timeLeft}
+            isAnswered={isAnswered}
+            userAnswers={userAnswers}
+            showQuestionResult={showQuestionResult}
+            currentQuestionResult={currentQuestionResult}
+            onAnswer={handleAnswer}
+            onContinue={handleContinueToNext}
+          />
+        ) : (
+          <div className="py-4 sm:py-6">
+            {activeTab === 'home' && (
+              <HomeContent 
+                isMiniApp={isMiniApp}
+                isInFarcaster={isInFarcaster}
+                context={context}
+                setShowConnectWallet={setShowConnectWallet}
+                setShowTopicModal={setShowTopicModal}
+                switchToCelo={switchToCelo}
+                isSwitchingNetwork={isSwitchingNetwork}
+                setShowFeeCurrencyModal={setShowFeeCurrencyModal}
+                activeSessionId={activeSessionId}
+                onResumeQuiz={handleResumeQuiz}
+                onDismissResume={handleDismissResume}
+                checkingActiveSession={checkingActiveSession}
+              />
+            )}
+            {activeTab === 'leaderboard' && <LeaderboardContent />}
+            {activeTab === 'profile' && (
+              <ProfileContent 
+                isMiniApp={isMiniApp}
+                isInFarcaster={isInFarcaster}
+                context={context}
+                showProfileDropdown={showProfileDropdown}
+                setShowProfileDropdown={setShowProfileDropdown}
+                setShowConnectWallet={setShowConnectWallet}
+              />
+            )}
+          </div>
+        )}
       </div>
-    )}
 
-    {/* Retro-themed Bottom Navigation */}
-    {!isInQuiz && !showResults && (
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t-[0.35em] border-[#050505] px-2 sm:px-4 py-3 sm:py-4 z-20 shadow-[0_-0.7em_0_#000000] mobile-safe-area">
-        <div className="flex justify-around max-w-sm mx-auto">
-          {[
-            { tab: 'home', icon: Home, label: '🏠 Home' },
-            { tab: 'leaderboard', icon: Trophy, label: '🏆 Ranks' },
-            { tab: 'profile', icon: User, label: '👤 Profile' }
-          ].map((item) => (
-            <button
-              key={item.tab}
-              onClick={() => setActiveTab(item.tab)}
-              className={`flex flex-col items-center space-y-1 sm:space-y-2 py-2 sm:py-3 px-2 sm:px-4 rounded-[0.3em] transition-all btn-mobile border-[0.15em] ${
-                activeTab === item.tab 
-                  ? 'bg-[#7C65C1] border-[#050505] text-white shadow-[0.2em_0.2em_0_#000000]' 
-                  : 'bg-white border-[#050505] text-[#050505] hover:bg-[#f7f7f7] shadow-[0.15em_0.15em_0_#000000]'
-              }`}
-            >
-              <item.icon className="w-5 h-5 sm:w-6 sm:h-6" />
-              <span className="text-xs font-bold">{item.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    )}
+      {/* Start Quiz Button */}
+      {!isInQuiz && !showResults && (
+        <StartQuizButton
+          onClick={() => setShowTopicModal(true)}
+          isLoading={quizelo.isLoading}
+          aiLoading={aiLoading}
+          canQuiz={quizelo.userInfo ? quizelo.userInfo.canQuiz : true}
+        />
+      )}
 
-     {/* Modals */}
-     {showConnectWallet && <ConnectWalletModal />}
-     {showTopicModal && <TopicModal />}
-     <QuizGenerationModal 
-       isVisible={showQuizGeneration} 
-       topic={selectedTopic} 
-     />
-     <TransactionModal 
-       isVisible={showTransactionModal}
-       status={transactionStatus}
-       txHash={currentTxHash}
-       onClose={() => setShowTransactionModal(false)}
-     />
-     {showNetworkModal && <NetworkCheckModal 
-       showNetworkModal={showNetworkModal}
-       isSwitchingNetwork={isSwitchingNetwork} 
-       networkError={networkError} 
-       switchToCelo={switchToCelo}
-       setShowNetworkModal={setShowNetworkModal}
-     />}
-     {showQuizInfo && <QuizInfoModal 
-       isVisible={showQuizInfo}
-       onClose={() => setShowQuizInfo(false)}
-       onStart={handleStartQuiz}
-       quizFee={quizelo.quizFee && typeof quizelo.quizFee === 'bigint' ? quizelo.formatEther(quizelo.quizFee) : '0.1'}
-       potentialWinnings={quizelo.quizFee && typeof quizelo.quizFee === 'bigint' ? quizelo.formatEther(quizelo.quizFee * 5n) : '0.5'}
-       isLoading={quizelo.isLoading}
-     />}
-     <FeeCurrencyModal
-       isVisible={showFeeCurrencyModal}
-       onSelect={(tokenAddress) => {
-         quizelo.setSelectedToken(tokenAddress);
-         setShowFeeCurrencyModal(false);
-       }}
-       supportedTokens={quizelo.supportedTokens}
-       isMiniPayWallet={isMiniPayWallet}
-     />
-   </div>
- );
+      {/* Bottom Navigation */}
+      {!isInQuiz && !showResults && (
+        <BottomNavigation
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+        />
+      )}
+
+      {/* Status Display */}
+      <StatusDisplay />
+      
+      {/* Modals */}
+      <ConnectWalletModal
+        isVisible={showConnectWallet}
+        onClose={() => setShowConnectWallet(false)}
+        isMiniApp={isMiniApp}
+        isInFarcaster={isInFarcaster}
+      />
+      
+      <TopicModal
+        isVisible={showTopicModal}
+        onClose={() => setShowTopicModal(false)}
+        topics={topics}
+        onSelectTopic={handleTopicSelect}
+      />
+      
+      <QuizGenerationModal 
+        isVisible={showQuizGeneration} 
+        topic={selectedTopic} 
+      />
+      
+      <TransactionModal 
+        isVisible={showTransactionModal}
+        status={transactionStatus}
+        txHash={currentTxHash}
+        errorMessage={transactionErrorMessage}
+        onClose={() => {
+          setShowTransactionModal(false);
+          setTransactionErrorMessage('');
+        }}
+      />
+      
+      <NetworkCheckModal 
+        showNetworkModal={showNetworkModal}
+        isSwitchingNetwork={isSwitchingNetwork} 
+        networkError={networkError} 
+        switchToCelo={switchToCelo}
+        setShowNetworkModal={setShowNetworkModal}
+      />
+      
+      <QuizInfoModal 
+        isVisible={showQuizInfo}
+        onClose={() => setShowQuizInfo(false)}
+        onStart={handleStartQuiz}
+        isLoading={quizelo.isLoading}
+      />
+      
+      <FeeCurrencyModal
+        isVisible={showFeeCurrencyModal}
+        onSelect={(tokenAddress) => {
+          quizelo.setSelectedToken(tokenAddress);
+          setShowFeeCurrencyModal(false);
+        }}
+        onClose={() => setShowFeeCurrencyModal(false)}
+        supportedTokens={quizelo.supportedTokens}
+        isMiniPayWallet={isMiniPayWallet}
+      />
+    </div>
+  );
 };
 
 export default QuizeloApp;

@@ -159,6 +159,12 @@ export const quizABI =[
 	},
 	{
 		"anonymous": false,
+		"inputs": [],
+		"name": "LeaderboardsReset",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
 		"inputs": [
 			{
 				"indexed": true,
@@ -227,6 +233,12 @@ export const quizABI =[
 				"internalType": "uint256",
 				"name": "startTime",
 				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "betAmount",
+				"type": "uint256"
 			}
 		],
 		"name": "QuizStarted",
@@ -258,6 +270,11 @@ export const quizABI =[
 				"internalType": "address",
 				"name": "token",
 				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "betAmount",
+				"type": "uint256"
 			}
 		],
 		"name": "startQuiz",
@@ -408,6 +425,11 @@ export const quizABI =[
 				"internalType": "uint256",
 				"name": "reward",
 				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "betAmount",
+				"type": "uint256"
 			}
 		],
 		"stateMutability": "view",
@@ -418,6 +440,11 @@ export const quizABI =[
 			{
 				"internalType": "uint256",
 				"name": "score",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "betAmount",
 				"type": "uint256"
 			}
 		],
@@ -758,6 +785,11 @@ export const quizABI =[
 			{
 				"internalType": "uint256",
 				"name": "reward",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "betAmount",
 				"type": "uint256"
 			},
 			{
@@ -1293,6 +1325,19 @@ export const quizABI =[
 	},
 	{
 		"inputs": [],
+		"name": "MIN_QUIZ_FEE",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
 		"name": "owner",
 		"outputs": [
 			{
@@ -1307,19 +1352,6 @@ export const quizABI =[
 	{
 		"inputs": [],
 		"name": "QUIZ_DURATION",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "QUIZ_FEE",
 		"outputs": [
 			{
 				"internalType": "uint256",

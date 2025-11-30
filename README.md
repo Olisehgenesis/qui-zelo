@@ -99,11 +99,14 @@ NEXT_PUBLIC_ENV=production
 # Smart Contract
 NEXT_PUBLIC_QUIZELO_CONTRACT_ADDRESS=0x1234567890123456789012345678901234567890
 
+# OpenAI API (Server-side only - never expose to client)
+OPENAI_API_KEY=sk-your-openai-api-key-here
+
 # Divvi Referral Tracking
 NEXT_PUBLIC_DIVVI_CONSUMER_ADDRESS=0x53eaF4CD171842d8144e45211308e5D90B4b0088
 
-# AI Configuration
-NEXT_PUBLIC_OPENAI_API_KEY=your-openai-api-key
+# AI Configuration (Server-side only - never expose to client)
+OPENAI_API_KEY=sk-your-openai-api-key-here
 
 # Farcaster Configuration
 NEXT_PUBLIC_NEYNAR_API_KEY=your-neynar-api-key

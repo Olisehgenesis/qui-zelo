@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 
 import { getSession } from "~/auth"
 import "~/app/globals.css";
@@ -7,8 +7,6 @@ import { Providers } from "~/app/providers";
 export const metadata: Metadata = {
   title: "Quizelo",
   description: "AI-powered Celo quizzes for Farcaster",
-  viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
-  themeColor: "#f59e0b",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
@@ -17,6 +15,15 @@ export const metadata: Metadata = {
   formatDetection: {
     telephone: false,
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#f59e0b",
 };
 
 export default async function RootLayout({
@@ -29,12 +36,10 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Quizelo" />
-        <meta name="theme-color" content="#f59e0b" />
         <meta name="msapplication-TileColor" content="#f59e0b" />
         <meta name="format-detection" content="telephone=no" />
       </head>

@@ -7,18 +7,18 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
- * @title QuizeloV2
- * @notice A comprehensive quiz game contract where users pay a fee to take quizzes and can earn rewards based on their score
- * @dev Uses ERC20 tokens for payments/rewards, Ownable for access control, and ReentrancyGuard for security
- * @dev Supports leaderboards, user statistics, streaks, and comprehensive analytics
+ * @title QuizeloV2 - Flexible Betting Quiz Game
+ * @notice A quiz game contract where users can bet flexible amounts (minimum 0.005 tokens)
+ * @dev Uses ERC20 tokens for payments/rewards with dynamic reward multipliers based on score
+ * @dev Rewards: 60%: 2x | 70%: 3x | 80%: 4x | 90%+: 5x of bet amount
  */
 contract QuizeloV2 is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // ============ Constants ============
     
-    /// @notice Fee required to start a quiz (in token units, e.g., 100 * 10^18 for 100 tokens with 18 decimals)
-    uint256 public constant QUIZ_FEE = 100 * 1e18; // 100 tokens (adjust decimals as needed)
+    /// @notice Minimum fee required to start a quiz (in token units)
+    uint256 public constant MIN_QUIZ_FEE = 5 * 1e15; // 0.005 tokens (5 * 10^15)
     
     /// @notice Duration of a quiz session in seconds
     uint256 public constant QUIZ_DURATION = 900; // 15 minutes
@@ -47,6 +47,7 @@ contract QuizeloV2 is Ownable, ReentrancyGuard {
         bool claimed;           // Whether the reward has been claimed
         uint256 score;          // Score achieved (0-100)
         uint256 reward;         // Reward claimed
+        uint256 betAmount;      // Amount user bet on this quiz
     }
 
     /// @notice User information for daily quiz tracking
@@ -152,7 +153,8 @@ contract QuizeloV2 is Ownable, ReentrancyGuard {
     event QuizStarted(
         bytes32 indexed sessionId,
         address indexed user,
-        uint256 startTime
+        uint256 startTime,
+        uint256 betAmount
     );
     
     /// @notice Emitted when a quiz is completed and reward is claimed
@@ -203,20 +205,22 @@ contract QuizeloV2 is Ownable, ReentrancyGuard {
     /**
      * @notice Start a new quiz session
      * @param token Address of the ERC20 token to use for payment and reward
-     * @dev Requires payment of QUIZ_FEE in ERC20 tokens, checks daily limits and cooldown
-     * @dev User must approve this contract to spend QUIZ_FEE tokens before calling
+     * @param betAmount Amount user wants to bet (must be >= MIN_QUIZ_FEE)
+     * @dev Requires payment of betAmount in ERC20 tokens, checks daily limits and cooldown
+     * @dev User must approve this contract to spend betAmount tokens before calling
      */
-    function startQuiz(address token) external nonReentrant {
+    function startQuiz(address token, uint256 betAmount) external nonReentrant {
         require(supportedTokens[token], "Quizelo: Token not supported");
+        require(betAmount >= MIN_QUIZ_FEE, "Quizelo: Bet below minimum");
         require(canOperateQuizzes(token), "Quizelo: Contract balance too low for this token");
         
         address user = msg.sender;
         IERC20 paymentToken = IERC20(token);
         
-        // Transfer quiz fee from user
-        paymentToken.safeTransferFrom(user, address(this), QUIZ_FEE);
-        tokenBalances[token] += QUIZ_FEE;
-        totalFeesCollected += QUIZ_FEE;
+        // Transfer bet amount from user
+        paymentToken.safeTransferFrom(user, address(this), betAmount);
+        tokenBalances[token] += betAmount;
+        totalFeesCollected += betAmount;
         
         // Reset daily count if it's a new day
         _resetDailyCountIfNeeded(user);
@@ -242,7 +246,8 @@ contract QuizeloV2 is Ownable, ReentrancyGuard {
             active: true,
             claimed: false,
             score: 0,
-            reward: 0
+            reward: 0,
+            betAmount: betAmount
         });
         
         // Add to current quiz takers
@@ -252,7 +257,7 @@ contract QuizeloV2 is Ownable, ReentrancyGuard {
         dailyQuizCount[user]++;
         lastQuizTime[user] = startTime;
         
-        emit QuizStarted(sessionId, user, startTime);
+        emit QuizStarted(sessionId, user, startTime, betAmount);
     }
     
     /**
@@ -279,7 +284,7 @@ contract QuizeloV2 is Ownable, ReentrancyGuard {
         uint256 reward = 0;
         bool won = false;
         if (score >= 60) {
-            reward = calculatePotentialReward(score);
+            reward = calculatePotentialReward(score, session.betAmount);
             require(tokenBalances[token] >= reward, "Quizelo: Insufficient contract balance for this token");
             
             // Mark as won today
@@ -430,6 +435,7 @@ contract QuizeloV2 is Ownable, ReentrancyGuard {
      * @return claimed Whether reward was claimed
      * @return score Score achieved (0 if not claimed)
      * @return reward Reward earned (0 if not claimed or failed)
+     * @return betAmount Amount user bet
      * @return timeRemaining Time remaining in seconds
      */
     function getQuizSession(bytes32 sessionId) external view returns (
@@ -441,6 +447,7 @@ contract QuizeloV2 is Ownable, ReentrancyGuard {
         bool claimed,
         uint256 score,
         uint256 reward,
+        uint256 betAmount,
         uint256 timeRemaining
     ) {
         QuizSession memory session = activeQuizzes[sessionId];
@@ -452,6 +459,7 @@ contract QuizeloV2 is Ownable, ReentrancyGuard {
         claimed = session.claimed;
         score = session.score;
         reward = session.reward;
+        betAmount = session.betAmount;
         
         if (active && block.timestamp < expiryTime) {
             timeRemaining = expiryTime - block.timestamp;
@@ -469,28 +477,27 @@ contract QuizeloV2 is Ownable, ReentrancyGuard {
     }
     
     /**
-     * @notice Calculate potential reward for a score
+     * @notice Calculate potential reward for a score and bet amount
      * @param score The score (0-100)
+     * @param betAmount The amount user bet
      * @return reward The reward amount in token units
+     * @dev Multipliers: 60%: 2x, 70%: 3x, 80%: 4x, 90%+: 5x
      */
-    function calculatePotentialReward(uint256 score) public pure returns (uint256) {
+    function calculatePotentialReward(uint256 score, uint256 betAmount) public pure returns (uint256) {
         if (score < 60) {
             return 0;
         }
         
-        // Base reward is 5x the quiz fee for passing (60%+)
-        uint256 baseReward = QUIZ_FEE * 5;
-        
-        // Bonus for higher scores
+        // Reward multipliers based on score
         if (score >= 90) {
-            return baseReward * 2; // 10x for 90%+
+            return betAmount * 5; // 5x for 90%+
         } else if (score >= 80) {
-            return baseReward * 3 / 2; // 7.5x for 80%+
+            return betAmount * 4; // 4x for 80%+
         } else if (score >= 70) {
-            return baseReward * 6 / 5; // 6x for 70%+
+            return betAmount * 3; // 3x for 70%+
         }
         
-        return baseReward; // 5x for 60%+
+        return betAmount * 2; // 2x for 60%+
     }
     
     /**
@@ -793,7 +800,7 @@ contract QuizeloV2 is Ownable, ReentrancyGuard {
     /**
      * @notice Check if it's a new day for the user
      */
-    function _isNewDay(address user) internal view returns (bool) {
+     function _isNewDay(address user) internal view returns (bool) {
         uint256 currentDay = block.timestamp / 1 days;
         uint256 lastDay = lastResetDay[user];
         return currentDay > lastDay;
@@ -1071,4 +1078,3 @@ contract QuizeloV2 is Ownable, ReentrancyGuard {
         }
     }
 }
-

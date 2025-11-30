@@ -46,20 +46,26 @@ export function isTokenSupportedByMiniPay(tokenAddress: string): boolean {
 
 /**
  * Get fee currency for MiniPay transactions
- * MiniPay supports setting feeCurrency to cUSD address
- * If no feeCurrency is set, it defaults to CELO
+ * Uses the selected token as fee currency if it's supported by MiniPay
+ * MiniPay supports stablecoins (cUSD, USDC, USDT) as fee currency
+ * If the selected token is not supported, defaults to cUSD
  */
-export function getFeeCurrencyForMiniPay(tokenAddress: string): string | undefined {
-  if (!isMiniPay()) return undefined;
+export function getFeeCurrencyForMiniPay(selectedToken: string | null): string | undefined {
+  if (!isMiniPay() || !selectedToken) return undefined;
   
-  // MiniPay supports cUSD as fee currency
-  // If user selected cUSD, use it as fee currency
-  if (tokenAddress.toLowerCase() === MINIPAY_SUPPORTED_TOKENS[0].toLowerCase()) {
-    return MINIPAY_SUPPORTED_TOKENS[0]; // cUSD
+  const tokenLower = selectedToken.toLowerCase();
+  
+  // Check if selected token is supported by MiniPay
+  const isSupported = MINIPAY_SUPPORTED_TOKENS.some(
+    (addr) => addr.toLowerCase() === tokenLower
+  );
+  
+  if (isSupported) {
+    // Use the selected token as fee currency
+    return selectedToken;
   }
   
-  // For other stablecoins, we can still use cUSD as fee currency
-  // or let MiniPay default to CELO
-  return MINIPAY_SUPPORTED_TOKENS[0]; // Default to cUSD for fee currency
+  // If selected token is not supported by MiniPay, default to cUSD
+  return MINIPAY_SUPPORTED_TOKENS[0]; // cUSD
 }
 
