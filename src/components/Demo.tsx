@@ -769,6 +769,10 @@ const QuizeloApp = () => {
                 onResumeQuiz={handleResumeQuiz}
                 onDismissResume={handleDismissResume}
                 checkingActiveSession={checkingActiveSession}
+                onStartQuizClick={() => setShowTopicModal(true)}
+                isLoading={quizelo.isLoading}
+                aiLoading={aiLoading}
+                canQuiz={quizelo.userInfo ? quizelo.userInfo.canQuiz : true}
               />
             )}
             {activeTab === 'leaderboard' && <LeaderboardContent />}
@@ -786,8 +790,8 @@ const QuizeloApp = () => {
         )}
       </div>
 
-      {/* Start Quiz Button */}
-      {!isInQuiz && !showResults && (
+      {/* Start Quiz Button - Only show outside Farcaster (for non-Farcaster users) */}
+      {!isInQuiz && !showResults && !isInFarcaster && (
         <StartQuizButton
           onClick={() => setShowTopicModal(true)}
           isLoading={quizelo.isLoading}
